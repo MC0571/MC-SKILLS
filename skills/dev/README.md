@@ -10,7 +10,7 @@
 | [pmo](./pmo/SKILL.md) | 0.12.0 | 在用户委任的单一 GitHub 仓库中，持续推进多个交付单元组成的总体产品目标，处理跨单元取舍、真实依赖、归属冲突和后继。 |
 | [tasks-owner](./tasks-owner/SKILL.md) | 0.26.0 | 在用户明确委任或有效 PMO 委派下，持续负责一个可定位交付范围的实现、验证和收口。 |
 
-从 Preview / latest source 安装本主题当前全部 skills：
+从 `main` 安装本主题当前全部 skills：
 
 ```bash
 npx skills add https://github.com/MC-and-his-Agents/MC-AGENT-KIT/tree/main/skills --full-depth --skill pmo --skill tasks-owner

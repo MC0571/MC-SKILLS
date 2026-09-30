@@ -9,7 +9,7 @@
 |---|---:|---|
 | [codex-like-app-design](./codex-like-app-design/SKILL.md) | 0.1.0 | Design, build, adapt, or review dense desktop AI workbenches using source-grounded patterns from Codex Desktop. |
 
-从 Preview / latest source 安装本主题当前全部 skills：
+从 `main` 安装本主题当前全部 skills：
 
 ```bash
 npx skills add https://github.com/MC-and-his-Agents/MC-AGENT-KIT/tree/main/skills --full-depth --skill codex-like-app-design

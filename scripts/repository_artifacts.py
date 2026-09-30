@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-"""Build deterministic artifact snapshots, diffs and release ledgers from Git trees."""
+"""Read artifact versions from Git trees for repository validation."""
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
 SEMVER_NUMBER = r"(?:0|[1-9]\d*)"
 SEMVER_PRERELEASE = rf"(?:{SEMVER_NUMBER}|\d*[A-Za-z-][0-9A-Za-z-]*)"
 SEMVER_PATTERN = re.compile(
@@ -303,123 +300,3 @@ def version_bump_errors(
                 )
             )
     return errors
-
-
-def diff_snapshots(base: dict, target: dict) -> dict:
-    before = {
-        f"{item['type']}:{item['name']}": item for item in base["artifacts"]
-    }
-    after = {
-        f"{item['type']}:{item['name']}": item for item in target["artifacts"]
-    }
-    added = [after[key] for key in sorted(after.keys() - before.keys())]
-    removed = [before[key] for key in sorted(before.keys() - after.keys())]
-    updated: list[dict] = []
-    unchanged: list[dict] = []
-    for identity in sorted(before.keys() & after.keys()):
-        old, new = before[identity], after[identity]
-        if old == new:
-            unchanged.append(new)
-            continue
-        changed_content = old["path"] != new["path"] or old["digest"] != new["digest"]
-        if changed_content and semver_key(new["version"]) <= semver_key(old["version"]):
-            raise ValueError(
-                f"{new['path']}: bump {identity} above {old['version']}; "
-                "its distributable files changed"
-            )
-        updated.append({"before": old, "after": new})
-    return {
-        "schema_version": 1,
-        "base_commit": base["commit"],
-        "target_commit": target["commit"],
-        "added": added,
-        "updated": updated,
-        "removed": removed,
-        "unchanged": unchanged,
-        "snapshot": target["artifacts"],
-    }
-
-
-def compare(root: Path, base_ref: str, target_ref: str) -> dict:
-    return diff_snapshots(snapshot(root, base_ref), snapshot(root, target_ref))
-
-
-def json_text(value: dict) -> str:
-    return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
-
-
-def artifact_row(item: dict) -> str:
-    harnesses = ", ".join(item.get("harnesses", [])) or "—"
-    collection = item.get("collection", "—")
-    return (
-        f"| {item['type']} | {item['name']} | {item['version']} | "
-        f"{collection} | {harnesses} | `{item['digest']}` |"
-    )
-
-
-def markdown_diff(result: dict) -> str:
-    lines = [
-        "## Artifact pending changes",
-        "",
-        f"- Base: `{result['base_commit']}`",
-        f"- Target: `{result['target_commit']}`",
-        f"- Full snapshot: {len(result['snapshot'])} artifacts",
-        "",
-    ]
-    if not result["added"] and not result["updated"] and not result["removed"]:
-        lines.extend(("No pending artifact changes.", ""))
-        return "\n".join(lines)
-    lines.extend(
-        (
-            "| Status | Artifact | Previous | Target | Path |",
-            "|---|---|---:|---:|---|",
-        )
-    )
-    lines.extend(
-        f"| added | `{item['type']}:{item['name']}` | — | {item['version']} | `{item['path']}` |"
-        for item in result["added"]
-    )
-    lines.extend(
-        f"| updated | `{item['after']['type']}:{item['after']['name']}` | "
-        f"{item['before']['version']} | {item['after']['version']} | `{item['after']['path']}` |"
-        for item in result["updated"]
-    )
-    lines.extend(
-        f"| removed | `{item['type']}:{item['name']}` | {item['version']} | — | `{item['path']}` |"
-        for item in result["removed"]
-    )
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base", help="previous official Release tag or commit")
-    parser.add_argument("--target", default="HEAD", help="candidate commit")
-    parser.add_argument("--format", choices=("json", "markdown"), default="json")
-    parser.add_argument("--json-output", type=Path)
-    parser.add_argument("--self-test", action="store_true")
-    args = parser.parse_args()
-    try:
-        if args.self_test:
-            from repository_validator_selfcheck import run_artifact_self_test
-
-            failures = run_artifact_self_test(compare, json_text, markdown_diff)
-            for item in failures:
-                print(f"error: {item}", file=sys.stderr)
-            if not failures:
-                print("Artifact ledger self-check passed.")
-            return bool(failures)
-        if not args.base:
-            parser.error("--base is required unless --self-test is used")
-        result = compare(ROOT, args.base, args.target)
-        if args.json_output:
-            args.json_output.write_text(json_text(result), encoding="utf-8")
-        print(json_text(result) if args.format == "json" else markdown_diff(result), end="")
-    except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
