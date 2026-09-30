@@ -255,6 +255,69 @@ def run_self_test() -> None:
     from tempfile import TemporaryDirectory
     import subprocess
 
+    result_filter = (
+        Path(__file__).resolve().parents[1]
+        / "skills/skill-release/assets/github-actions/skillhub_publish_result.jq"
+    )
+
+    def project_skillhub_result(raw: str, slug: str = "mc0571-sample") -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                "jq",
+                "-e",
+                "--arg",
+                "name",
+                "sample",
+                "--arg",
+                "slug",
+                slug,
+                "--arg",
+                "version",
+                "1.2.3",
+                "-f",
+                str(result_filter),
+            ],
+            input=raw,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    pending_result = project_skillhub_result(
+        '{"status":"pending_review","private":{"token":"secret"},"unknown":"discard"}'
+    )
+    assert pending_result.returncode == 0, pending_result.stderr
+    projected = json.loads(pending_result.stdout)
+    assert projected == {
+        "name": "sample",
+        "slug": "mc0571-sample",
+        "version": "1.2.3",
+        "skillId": None,
+        "status": "pending_review",
+        "publicUrl": None,
+    }, projected
+    assert "secret" not in pending_result.stdout and "unknown" not in pending_result.stdout
+
+    fallback_result = project_skillhub_result(
+        '{"skillId":{"unexpected":"shape"},"publicUrl":["unexpected"],"token":"secret"}',
+        slug="",
+    )
+    assert fallback_result.returncode == 0, fallback_result.stderr
+    fallback = json.loads(fallback_result.stdout)
+    assert fallback["status"] == "submitted", fallback
+    assert fallback["skillId"] is None and fallback["publicUrl"] is None, fallback
+    assert "slug" not in fallback, fallback
+    assert "secret" not in fallback_result.stdout and "unexpected" not in fallback_result.stdout
+
+    rejected_result = project_skillhub_result('{"success":false,"token":"secret"}')
+    assert rejected_result.returncode != 0
+    assert "success=false" in rejected_result.stderr
+    assert "secret" not in rejected_result.stderr and "secret" not in rejected_result.stdout
+
+    malformed_result = project_skillhub_result("not json")
+    assert malformed_result.returncode != 0 and "parse error" in malformed_result.stderr
+    assert "not json" not in malformed_result.stderr and "not json" not in malformed_result.stdout
+
     def git(repository: Path, *args: str) -> str:
         return subprocess.run(
             ["git", "-C", str(repository), *args], check=True, stdout=subprocess.PIPE, text=True

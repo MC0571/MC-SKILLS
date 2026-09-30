@@ -9,6 +9,7 @@ on:
       - "scripts/skill-release-matrix.py"
       - "scripts/skill-release-bundle.py"
       - "skills/skill-release/assets/github-actions/clawhub_target.py"
+      - "skills/skill-release/assets/github-actions/skillhub_publish_result.jq"
       - ".github/workflows/skill-release.yml"
       - ".github/actionlint.yaml"
   push:
@@ -19,6 +20,7 @@ on:
       - "scripts/skill-release-matrix.py"
       - "scripts/skill-release-bundle.py"
       - "skills/skill-release/assets/github-actions/clawhub_target.py"
+      - "skills/skill-release/assets/github-actions/skillhub_publish_result.jq"
       - ".github/workflows/skill-release.yml"
       - ".github/actionlint.yaml"
   workflow_dispatch:
@@ -413,10 +415,9 @@ jobs:
               --host "$SKILLHUB_HOST" \
               --changelog "自动发布 ${TARGET_SHA:0:12}" \
               --json > "$raw_result"
-            jq -e --arg name "$name" --arg slug "$slug" --arg version "$version" '
-              select(type == "object" and has("skillId") and has("status") and (.status | type == "string")) |
-              {name: $name, slug: $slug, version: $version, skillId, status, publicUrl}
-            ' "$raw_result" > "$RUNNER_TEMP/tencent-results/$name.json"
+            jq -e --arg name "$name" --arg slug "$slug" --arg version "$version" \
+              -f skills/skill-release/assets/github-actions/skillhub_publish_result.jq \
+              "$raw_result" > "$RUNNER_TEMP/tencent-results/$name.json"
           done < <(jq -c '.include[]' <<< "$RELEASE_MATRIX")
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

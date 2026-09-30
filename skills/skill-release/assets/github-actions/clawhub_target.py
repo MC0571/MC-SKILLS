@@ -19,6 +19,13 @@ SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 SLUG_RULE = "3-96 lowercase kebab-case characters"
 CLI_NOT_FOUND = "Skill not found or unavailable to this account."
+RATE_LIMIT_DETAILS = re.compile(
+    r"\((?:retry in \d+s(?:, remaining: \d+/\d+)?(?:, reset in \d+s)?"
+    r"|remaining: \d+/\d+(?:, reset in \d+s)?"
+    r"|reset in \d+s)\)"
+)
+
+
 class TargetError(ValueError):
     pass
 
@@ -98,10 +105,28 @@ def inspect_owner(payload: object) -> str:
     return normalize_handle(handle)
 
 
+def _split_known_rate_limit_note(line: str) -> tuple[str, str | None]:
+    start = line.rfind(" (")
+    if start == -1:
+        return line, None
+    note = line[start + 1 :]
+    if RATE_LIMIT_DETAILS.fullmatch(note):
+        return line[:start], note
+    return line, None
+
+
 def is_known_cli_not_found(error: str) -> bool:
     lines = [re.sub(r"\x1b\[[0-9;]*m", "", line).strip() for line in error.splitlines()]
     lines = [line for line in lines if line]
-    return lines == [CLI_NOT_FOUND, f"Error: {CLI_NOT_FOUND}"]
+    if len(lines) != 2:
+        return False
+    first, first_note = _split_known_rate_limit_note(lines[0])
+    second, second_note = _split_known_rate_limit_note(lines[1])
+    return (
+        first == CLI_NOT_FOUND
+        and second == f"Error: {CLI_NOT_FOUND}"
+        and first_note == second_note
+    )
 
 
 def validate_inspection(
@@ -243,6 +268,29 @@ def run_self_test() -> None:
         f"{CLI_NOT_FOUND}\nError: {CLI_NOT_FOUND}",
         allow_atomic_create=True,
     ) == "unverified"
+    rate_limited_not_found = (
+        "Skill not found or unavailable to this account. (reset in 15s)\n"
+        "Error: Skill not found or unavailable to this account. (reset in 15s)"
+    )
+    assert is_known_cli_not_found(rate_limited_not_found)
+    assert validate_inspection(
+        automatic,
+        "my-owner",
+        1,
+        None,
+        rate_limited_not_found,
+        allow_atomic_create=True,
+    ) == "unverified"
+    assert is_known_cli_not_found(
+        f"{CLI_NOT_FOUND} (retry in 3s, remaining: 0/20, reset in 3s)\n"
+        f"Error: {CLI_NOT_FOUND} (retry in 3s, remaining: 0/20, reset in 3s)"
+    )
+    assert not is_known_cli_not_found(
+        f"{CLI_NOT_FOUND} (reset in 15s)\nError: {CLI_NOT_FOUND}"
+    )
+    assert not is_known_cli_not_found(
+        f"{CLI_NOT_FOUND} (reset in 15s) extra\nError: {CLI_NOT_FOUND} (reset in 15s)"
+    )
     assert_error(
         lambda: validate_inspection(
             automatic,
@@ -258,6 +306,19 @@ def run_self_test() -> None:
         lambda: validate_inspection(automatic, "my-owner", 1, None, "HTTP 403", allow_atomic_create=True),
         "cannot verify ownership",
     )
+    for unrelated_error in ("401 Unauthorized", "403 Forbidden", "429 Too Many Requests", "network timeout"):
+        assert not is_known_cli_not_found(unrelated_error)
+        assert_error(
+            lambda unrelated_error=unrelated_error: validate_inspection(
+                automatic,
+                "my-owner",
+                1,
+                None,
+                unrelated_error,
+                allow_atomic_create=True,
+            ),
+            "cannot verify ownership",
+        )
     assert_error(
         lambda: validate_inspection(target, "my-owner", 0, {"owner": {"handle": "other"}}, ""),
         "already belongs",
