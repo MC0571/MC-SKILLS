@@ -330,6 +330,60 @@ def run_self_test() -> None:
     workflow_path = Path(__file__).resolve().parents[1] / ".github/workflows/skill-release.yml"
     workflow_text = workflow_path.read_text(encoding="utf-8")
     workflow = yaml.safe_load(workflow_text)
+    refs_step = next(
+        step for step in workflow["jobs"]["detect"]["steps"] if step.get("id") == "refs"
+    )
+    refs_script = refs_step["run"]
+    current_sha = "a" * 40
+    historical_sha = "c" * 40
+    parent_sha = "b" * 40
+    git_stub = """git() {
+  case "$1" in
+    fetch|merge-base) return 0 ;;
+    rev-parse)
+      case "$2" in
+        "$FAKE_TARGET_SHA^{commit}") echo "$FAKE_TARGET_SHA" ;;
+        origin/main) echo "$FAKE_CURRENT_SHA" ;;
+        "$FAKE_CURRENT_SHA^") echo "$FAKE_PARENT_SHA" ;;
+        *) return 1 ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+}
+"""
+    with TemporaryDirectory() as temporary:
+        for scope in ("changed", "all"):
+            for selected_sha in (current_sha, historical_sha):
+                output_path = Path(temporary) / f"{scope}-{selected_sha[:1]}.out"
+                environment = {
+                    **os.environ,
+                    "EVENT_NAME": "workflow_dispatch",
+                    "EVENT_REF": "refs/heads/main",
+                    "INPUT_COMMIT_SHA": selected_sha,
+                    "INPUT_SCOPE": scope,
+                    "GITHUB_OUTPUT": str(output_path),
+                    "FAKE_CURRENT_SHA": current_sha,
+                    "FAKE_PARENT_SHA": parent_sha,
+                    "FAKE_TARGET_SHA": selected_sha,
+                }
+                refs_result = subprocess.run(
+                    ["bash"],
+                    input=f"{git_stub}\n{refs_script}",
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    env=environment,
+                )
+                accepted = selected_sha == current_sha
+                assert (refs_result.returncode == 0) is accepted, refs_result.stderr
+                if accepted:
+                    assert output_path.read_text(encoding="utf-8") == (
+                        f"base_sha={parent_sha}\ntarget_sha={current_sha}\nscope={scope}\n"
+                    )
+                else:
+                    assert "requires commit_sha to equal the current origin/main HEAD" in refs_result.stderr
+
     publish_step = next(
         step
         for step in workflow["jobs"]["tencent_publish"]["steps"]

@@ -196,7 +196,7 @@ python3 .github/scripts/detect_changed_skills.py \
 
 在 Actions Repository Variables 中配置：`SKILLHUB_PUBLISHER`（预期 Tencent handle）、`CLAWHUB_PUBLISHER`（预期 ClawHub publisher）和 `CLAWHUB_OWNER`（个人发布留空，组织发布填写与 publisher 相同的 handle）。在 Repository Secrets 中配置 `SKILLHUB_KEY` 和 `CLAWHUB_TOKEN`。
 
-从 `workflow_dispatch` 选择 `commit_sha`、`scope`、`market`，并可填写 `skill_name`。SHA 必须是 `main` 历史中的完整 40 位 commit；工作流只允许从 `main` 调度。默认 `scope=changed` 比较目标 SHA 与其父提交。初次全量快照使用 `scope=all`，必须把 `commit_sha` 设为调度时的当前 `main` HEAD；检测矩阵以全零 SHA 为 base，仓库合同仍按目标 SHA 的真实父提交验证，因此矩阵包含当前所有独立 Skill 而不回填历史版本。可填写 `skill_name` 从所选矩阵中筛选单项；留空时选择矩阵中所有项目。`market` 可选 `both`、`skillhub` 或 `clawhub`。Tencent 同版本和 ClawHub 同版本均会跳过，较低版本会阻断。Tencent 公开检查返回 404 时，`scope=changed` dispatch 和所有 rerun 都会停下；只有先核实个人中心没有待审核条目后启动的 `scope=all` 首次运行可继续。Tencent 正式发布前还会比较 `origin/main` 上同一 Skill 的当前版本；若目标已被较高版本取代，记录 `superseded` 并跳过，Skill 已不存在时不发布。取消 workflow 会停止发布，最终报告仍会运行。
+从 `workflow_dispatch` 选择 `commit_sha`、`scope`、`market`，并可填写 `skill_name`。SHA 必须是当前 `main` HEAD 的完整 40 位 commit；无论 scope 为何，手动运行只接受该 SHA。默认 `scope=changed` 比较当前 HEAD 与其父提交。全量快照使用 `scope=all`，检测矩阵以全零 SHA 为 base，仓库合同仍按真实父提交验证，因此矩阵包含当前所有独立 Skill 而不回填历史版本。可填写 `skill_name` 从所选矩阵中筛选单项；留空时选择矩阵中所有项目。若需重试的 Skill 已不在变更矩阵中，选择 `scope=all` 并填写该 Skill 的 `skill_name`。`market` 可选 `both`、`skillhub` 或 `clawhub`。Tencent 同版本和 ClawHub 同版本均会跳过，较低版本会阻断。Tencent 公开检查返回 404 时，`scope=changed` dispatch 和所有 rerun 都会停下；只有先核实个人中心没有待审核条目后启动的 `scope=all` 首次运行可继续。Tencent 正式发布前还会比较 `origin/main` 上同一 Skill 的当前版本；若目标已被较高版本取代，记录 `superseded` 并跳过，Skill 已不存在时不发布。取消 workflow 会停止发布，最终报告仍会运行。
 
 ## 非技术用户配置
 

@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: Full commit SHA in main history (scope=all requires current main HEAD)
+        description: Full commit SHA equal to the current main HEAD
         required: true
         type: string
       scope:
@@ -123,8 +123,8 @@ jobs:
                 echo "commit_sha must be present in main history" >&2
                 exit 1
               fi
-              if [[ "$scope" == "all" && "$target" != "$(git rev-parse origin/main)" ]]; then
-                echo "scope=all requires commit_sha to equal the current origin/main HEAD" >&2
+              if [[ "$target" != "$(git rev-parse origin/main)" ]]; then
+                echo "workflow_dispatch requires commit_sha to equal the current origin/main HEAD" >&2
                 exit 1
               fi
               base="$(git rev-parse "$target^")"

@@ -216,7 +216,7 @@ clawhub skill publish "$SKILL_PATH" \
 - 复制检测器时保留固定的 `PyYAML==6.0.3` 安装；双市场共享检测只校验共同版本规则，Tencent 专属顶层 `version` 交给 Tencent dry-run 阻断。
 - 同一市场 `max-parallel: 1` 并在首个失败后停止；Tencent 与 ClawHub job 相互独立。
 - 固定 CLI、reusable workflow 和 Action 版本；不使用 `@main`，不自动创建 Tag、Release、Environment、Secret 或保护规则。
-- 本仓库 workflow 在 `main` push 中只发布新增或版本递增的 Skill，不回填历史资产。`workflow_dispatch` 可用 `scope=changed` 选择变更，也可用 `scope=all` 为当前 `main` HEAD 建立全量快照；Tencent 首次快照的前提与 404 核实、版本跳过规则见 [GitHub Actions 发布指南](references/github-actions.md)。Tencent 发布前会跳过已被 `origin/main` 较高版本取代或已删除的目标；取消 workflow 会停止发布，最终报告仍会运行。
+- 本仓库 workflow 在 `main` push 中只发布新增或版本递增的 Skill，不回填历史资产。`workflow_dispatch` 仅接受当前 `main` HEAD；可用 `scope=changed` 选择变更，或用 `scope=all` 和 `skill_name` 重试当前 Skill。全量快照、Tencent 首发前提与 404 核实、版本跳过规则见 [GitHub Actions 发布指南](references/github-actions.md)。Tencent 发布前会跳过已被 `origin/main` 较高版本取代或已删除的目标；取消 workflow 会停止发布，最终报告仍会运行。
 - 只保存不含 Token 的结构化发布结果；不要上传完整原始日志。
 
 ## 故障排查
