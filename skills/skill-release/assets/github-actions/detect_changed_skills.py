@@ -372,13 +372,13 @@ def test_change_detection() -> None:
         repository = Path(raw_directory)
         initialize_test_repository(repository)
         write_skill(repository, "skills/flat")
-        write_skill(repository, "skills/dev/tasks-owner")
+        write_skill(repository, "skills/dev/nested-skill")
         write_skill(repository, "skills/claw-only", top_version="")
         first = commit(repository, "add skills")
 
         result, errors = compare(repository, "skills", ZERO_SHA, first)
         paths = [item["path"] for item in result["matrix"]["include"]]
-        assert not errors and paths == ["skills/claw-only", "skills/flat", "skills/dev/tasks-owner"]
+        assert not errors and paths == ["skills/claw-only", "skills/flat", "skills/dev/nested-skill"]
         result, errors = compare(repository, "skills", first, first, True)
         assert not errors and not result["matrix"]["include"]
 
@@ -387,15 +387,15 @@ def test_change_detection() -> None:
         result, errors = compare(repository, "skills", first, unrelated, True)
         assert not errors and not result["matrix"]["include"]
 
-        write_skill(repository, "skills/dev/tasks-owner", "1.1.0", body="updated\n")
+        write_skill(repository, "skills/dev/nested-skill", "1.1.0", body="updated\n")
         nested_update = commit(repository, "update nested")
         result, errors = compare(repository, "skills", unrelated, nested_update, True)
         assert not errors and result["matrix"]["include"] == [
-            {"name": "tasks-owner", "path": "skills/dev/tasks-owner", "version": "1.1.0", "change": "updated"}
+            {"name": "nested-skill", "path": "skills/dev/nested-skill", "version": "1.1.0", "change": "updated"}
         ]
 
         write_skill(repository, "skills/flat", "1.1.0", body="updated\n")
-        write_skill(repository, "skills/dev/tasks-owner", "1.2.0", body="updated again\n")
+        write_skill(repository, "skills/dev/nested-skill", "1.2.0", body="updated again\n")
         multiple = commit(repository, "update multiple")
         result, errors = compare(repository, "skills", nested_update, multiple, True)
         assert not errors and len(result["matrix"]["include"]) == 2

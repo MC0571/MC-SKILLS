@@ -36,7 +36,7 @@ class Artifact:
     version: str
     path: str
     digest: str
-    collection: str | None = None
+    category: str | None = None
     harnesses: tuple[str, ...] = ()
 
     @property
@@ -51,8 +51,8 @@ class Artifact:
             "path": self.path,
             "digest": self.digest,
         }
-        if self.collection:
-            result["collection"] = self.collection
+        if self.category:
+            result["category"] = self.category
         if self.harnesses:
             result["harnesses"] = list(self.harnesses)
         return result
@@ -194,15 +194,13 @@ def parse_skill(entry: TreeEntry, root: Path, entries: list[TreeEntry]) -> Artif
     if not isinstance(version, str) or not SEMVER_PATTERN.fullmatch(version):
         raise ValueError(f"{entry.path}: invalid skill SemVer")
     artifact_path = str(Path(entry.path).parent)
-    parts = Path(artifact_path).parts
-    collection = parts[1] if len(parts) == 3 else None
     return Artifact(
         "skill",
         name,
         version,
         artifact_path,
         artifact_digest(root, entries, artifact_path),
-        collection,
+        metadata.get("category") if isinstance(metadata.get("category"), str) else None,
     )
 
 
@@ -246,6 +244,7 @@ def snapshot(root: Path, ref: str) -> dict:
     plugin_manifests: dict[str, dict[str, TreeEntry]] = {}
     for entry in entries:
         parts = Path(entry.path).parts
+        # Historical base refs still contain skills/<category>/<skill>/SKILL.md.
         if entry.path.endswith("/SKILL.md") and parts[0] == "skills" and len(parts) in {3, 4}:
             artifacts.append(parse_skill(entry, root, entries))
         if len(parts) == 4 and parts[0] == "plugins" and parts[-1] == "plugin.json":

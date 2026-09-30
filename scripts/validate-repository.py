@@ -17,13 +17,13 @@ from repository_artifacts import (
     parse_skill_text,
     version_bump_errors,
 )
-from repository_collections import validate_collection_readmes, validate_npx_readmes
+from repository_skills import SKILL_CATEGORIES, validate_npx_readmes
 from repository_plugin_components import load_json, valid_hooks, validate_component_path
 from repository_validator_selfcheck import run_self_test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MARKETPLACE_ID = "mc-agent-kit"
+MARKETPLACE_ID = "mc-skills"
 SHARED_PLUGIN_FIELDS = (
     "name", "version", "description", "author", "license", "keywords", "skills", "mcpServers"
 )
@@ -74,15 +74,11 @@ def validate_skills(root: Path) -> tuple[dict[str, tuple[str, str]], list[str]]:
     for path in sorted(skills_root.rglob("SKILL.md")):
         relative = path.relative_to(skills_root)
         source = path.relative_to(root).as_posix()
-        if len(relative.parts) not in {2, 3}:
+        if len(relative.parts) != 2:
             errors.append(
-                failure(source, "skill-layout", "use skills/<skill>/ or skills/<collection>/<skill>/")
+                failure(source, "skill-layout", "use skills/<skill>/SKILL.md")
             )
             continue
-        if len(relative.parts) == 2 and any(path.parent.glob("*/SKILL.md")):
-            errors.append(
-                failure(source, "collection-shadow", "remove SKILL.md from the collection root")
-            )
 
         values, metadata, parse_errors = parse_skill(path, root)
         errors.extend(parse_errors)
@@ -102,6 +98,15 @@ def validate_skills(root: Path) -> tuple[dict[str, tuple[str, str]], list[str]]:
                 failure(source, "skill-unique-id", f"rename it; `{name}` already exists at {seen[name]}")
             )
         seen[name] = source
+        category = metadata.get("category")
+        if not isinstance(category, str) or category not in SKILL_CATEGORIES:
+            errors.append(
+                failure(
+                    source,
+                    "skill-category",
+                    "set `metadata.category` to an official category",
+                )
+            )
         version = metadata.get("version")
         if not isinstance(version, str) or not SEMVER_PATTERN.fullmatch(version):
             errors.append(
@@ -538,7 +543,6 @@ def validate_repository(root: Path, base_ref: str | None = None) -> list[str]:
         root, {identity.removeprefix("skill:") for identity in skill_artifacts}
     )
     errors.extend(plugin_errors)
-    errors.extend(validate_collection_readmes(root))
     errors.extend(validate_npx_readmes(root))
     plugin_names = {identity.removeprefix("plugin:") for identity in plugin_artifacts}
     errors.extend(
@@ -554,14 +558,6 @@ def validate_repository(root: Path, base_ref: str | None = None) -> list[str]:
             [sys.executable, str(root / "scripts/render-plugin-directory.py"), "--check"],
             "generated-directory",
             "run `python3 scripts/render-plugin-directory.py`",
-        )
-    )
-    errors.extend(
-        run_check(
-            root,
-            [sys.executable, str(root / "scripts/validate-dev-orchestration.py")],
-            "dev-orchestration",
-            "fix the shared PMO and Tasks Owner contract or behavior cases",
         )
     )
     if base_ref:
@@ -591,16 +587,6 @@ def main() -> int:
             if args.self_test
             else validate_repository(ROOT, args.base_ref)
         )
-        if args.self_test:
-            result = subprocess.run(
-                [sys.executable, str(ROOT / "scripts/validate-dev-orchestration.py"), "--self-test"],
-                cwd=ROOT,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
-            if result.returncode:
-                errors.append(failure("scripts/validate-dev-orchestration.py", "orchestration-self-test", result.stdout.strip()))
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
         errors = [failure(".", "validator-runtime", f"fix validator input or environment: {exc}")]
     for error in errors:

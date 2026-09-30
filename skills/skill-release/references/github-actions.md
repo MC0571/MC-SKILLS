@@ -28,7 +28,7 @@
 
 ## 手动发布
 
-对单个或少量固定 Skill 使用 `workflow_dispatch` 输入或静态 matrix。嵌套目录必须传完整路径，例如 `skills/dev/tasks-owner`，不能只传 Skill 名。
+对单个或少量固定 Skill 使用 `workflow_dispatch` 输入或静态 matrix。嵌套目录必须传完整路径，例如 `skills/dev/nested-skill`，不能只传 Skill 名。
 
 ```yaml
 on:
@@ -150,7 +150,7 @@ env:
   CLAWHUB_PUBLISHER: "your-personal-or-organization-handle"
   CLAWHUB_OWNER: "" # 组织发布时填写与 CLAWHUB_PUBLISHER 相同的值
   CLAWHUB_TARGETS_JSON: >-
-    {"skills/my-skill":{"slug":"my-unique-skill","mode":"new"},"skills/dev/tasks-owner":{"slug":"tasks-owner","mode":"update"}}
+    {"skills/my-skill":{"slug":"my-unique-skill","mode":"new"},"skills/dev/nested-skill":{"slug":"nested-skill","mode":"update"}}
 ```
 
 每个进入 ClawHub matrix 的路径都必须有配置。`new` 要求远端查不到该 slug；`update` 要求条目存在且 owner 等于 `CLAWHUB_PUBLISHER`。目录名、Skill 内部 `name` 和远端 slug 是三个独立字段，不得互相推断。

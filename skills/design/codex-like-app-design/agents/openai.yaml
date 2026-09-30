@@ -1,4 +1,0 @@
-interface:
-  display_name: "Codex-like App Design"
-  short_description: "Codex-like task progress and result design."
-  default_prompt: "Use $codex-like-app-design to design or review a stateful desktop AI workbench, including intermediate progress and task summaries."

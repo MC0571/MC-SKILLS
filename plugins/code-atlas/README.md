@@ -37,12 +37,12 @@ CLI 与索引存在但没有明确 MCP 运行时证据时标为 `cli-only`。超
 
 ```bash
 # Codex
-codex plugin marketplace add MC-and-his-Agents/MC-AGENT-KIT --ref main
-codex plugin add code-atlas@mc-agent-kit
+codex plugin marketplace add MC0571/MC-SKILLS
+codex plugin add code-atlas@mc-skills
 
 # Claude Code
-claude plugin marketplace add MC-and-his-Agents/MC-AGENT-KIT
-claude plugin install code-atlas@mc-agent-kit
+claude plugin marketplace add MC0571/MC-SKILLS
+claude plugin install code-atlas@mc-skills
 ```
 
 CodeGraph 的安装是独立且需授权的动作。需要时先说明官方包来源
