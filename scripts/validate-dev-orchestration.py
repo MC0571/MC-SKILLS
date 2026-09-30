@@ -21,13 +21,13 @@ from tasks_owner_trajectory_schema import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "skills/dev/tasks-owner/references/dev-orchestration-contract.json"
-PLATFORM = ROOT / "skills/dev/tasks-owner/references/codex-app.md"
+CONTRACT = ROOT / "skills/tasks-owner/references/dev-orchestration-contract.json"
+PLATFORM = ROOT / "skills/tasks-owner/references/codex-app.md"
 FEEDBACK_FORM = ROOT / ".github/ISSUE_TEMPLATE/skill-feedback.yml"
-CYCLES = ROOT / "skills/dev/pmo/evals/cycle_cases.jsonl"
-INTEGRATION = ROOT / "skills/dev/tasks-owner/evals/dev_orchestration_cases.jsonl"
-OWNER_TRIGGERS = ROOT / "skills/dev/tasks-owner/evals/trigger_cases.json"
-PMO_TRIGGERS = ROOT / "skills/dev/pmo/evals/trigger_cases.json"
+CYCLES = ROOT / "skills/pmo/evals/cycle_cases.jsonl"
+INTEGRATION = ROOT / "skills/tasks-owner/evals/dev_orchestration_cases.jsonl"
+OWNER_TRIGGERS = ROOT / "skills/tasks-owner/evals/trigger_cases.json"
+PMO_TRIGGERS = ROOT / "skills/pmo/evals/trigger_cases.json"
 CAPABILITIES = {
     "pmo_admission", "owner_sparse_delta", "single_scope_owner_execution",
     "scoped_finding_fix", "delivery_closeout", "bounded_execution_retrospective",
@@ -704,25 +704,25 @@ def feedback_form_errors(contract: dict[str, Any], text: str) -> list[str]:
 def validate_files(contract: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     for skill in ("pmo", "tasks-owner"):
-        skill_dir = ROOT / f"skills/dev/{skill}"
+        skill_dir = ROOT / f"skills/{skill}"
         manifest = json.loads((skill_dir / "manifest.json").read_text(encoding="utf-8"))
         expected = contract["compatible_skills"][skill]["tested_artifact_version"]
         if manifest.get("version") != expected or skill_version(skill_dir / "SKILL.md") != expected:
             errors.append(f"{skill} 的入口、manifest 与本次发布候选版本不一致")
     combined = "\n".join((ROOT / path).read_text(encoding="utf-8") for path in (
-        "skills/dev/pmo/SKILL.md", "skills/dev/tasks-owner/SKILL.md",
-        "skills/dev/tasks-owner/references/governance.md",
+        "skills/pmo/SKILL.md", "skills/tasks-owner/SKILL.md",
+        "skills/tasks-owner/references/governance.md",
     ))
     for locator in ("dev-orchestration-contract.json", "codex-app.md"):
         if locator not in combined:
             errors.append(f"入口无法发现 {locator}")
-    if len(list((ROOT / "skills/dev").glob("*/references/dev-orchestration-contract.json"))) != 1:
+    if len(list((ROOT / "skills").glob("*/references/dev-orchestration-contract.json"))) != 1:
         errors.append("跨 Skill 合同必须只有一个权威文件")
-    if len(list((ROOT / "skills/dev").glob("*/references/codex-app.md"))) != 1:
+    if len(list((ROOT / "skills").glob("*/references/codex-app.md"))) != 1:
         errors.append("Codex App 平台事实必须只有一个权威文件")
     forbidden = re.compile(r"gpt-5\.6|codex_app__|wait_agent|10_000|60_000|24 小时|\d+\s*分钟")
     for skill in ("pmo", "tasks-owner"):
-        for path in (ROOT / f"skills/dev/{skill}").rglob("*.md"):
+        for path in (ROOT / f"skills/{skill}").rglob("*.md"):
             if path == PLATFORM or any(part in {"evals", "reports"} for part in path.parts):
                 continue
             if forbidden.search(path.read_text(encoding="utf-8")):
@@ -1053,7 +1053,7 @@ def self_test() -> list[str]:
         ("首次 occurrence", lambda value: value["skill_feedback"].update(new_issue_occurrence="unknown")),
         ("反馈失败状态", lambda value: value["skill_feedback"]["failure_status"]["candidate"].remove("write_failed")),
         ("权威来源", lambda value: value.update(authority_source="pmo")),
-        ("最低兼容版本", lambda value: value["compatible_skills"]["pmo"].update(minimum_compatible_version="0.13.0")),
+        ("最低兼容版本", lambda value: value["compatible_skills"]["pmo"].update(minimum_compatible_version="0.14.0")),
     ):
         bad_contract = copy.deepcopy(contract)
         mutate(bad_contract)

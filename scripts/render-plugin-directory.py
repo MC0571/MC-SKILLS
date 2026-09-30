@@ -9,21 +9,15 @@ import re
 import sys
 from pathlib import Path
 
-from repository_collections import NPX_ADD_PREFIX, collection_readmes, discovered_collections
+from repository_artifacts import SEMVER_PATTERN, parse_skill_text
+from repository_skills import SKILL_CATEGORIES
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SEMVER_NUMBER = r"(?:0|[1-9]\d*)"
-SEMVER_PRERELEASE = rf"(?:{SEMVER_NUMBER}|\d*[A-Za-z-][0-9A-Za-z-]*)"
-SEMVER_PATTERN = re.compile(
-    rf"^{SEMVER_NUMBER}\.{SEMVER_NUMBER}\.{SEMVER_NUMBER}"
-    rf"(?:-{SEMVER_PRERELEASE}(?:\.{SEMVER_PRERELEASE})*)?"
-    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
-)
 README_CONFIGS = (
     {
         "path": ROOT / "README.md",
-        "skills_header": ("Skill", "Collection", "Version", "Description"),
+        "skills_header": ("Skill", "Category", "Version", "Description"),
         "plugins_header": (
             "Plugin",
             "Harness",
@@ -34,7 +28,7 @@ README_CONFIGS = (
     },
     {
         "path": ROOT / "README.zh-CN.md",
-        "skills_header": ("Skill", "主题", "版本", "描述"),
+        "skills_header": ("Skill", "分类", "版本", "描述"),
         "plugins_header": ("Plugin", "Harness", "分类", "版本", "描述"),
     },
 )
@@ -68,64 +62,45 @@ def first_sentence(text: str) -> str:
     return text.strip()
 
 
-def parse_skill_front_matter(path: Path) -> tuple[str, str, str]:
+def parse_skill_front_matter(path: Path) -> tuple[str, str, str, str]:
     text = path.read_text(encoding="utf-8")
-    if not text.startswith("---\n"):
-        raise RenderError(f"Missing front matter in {path.relative_to(ROOT)}")
+    source = path.relative_to(ROOT).as_posix()
+    values, metadata, errors = parse_skill_text(text, source)
+    if errors:
+        raise RenderError(errors[0])
 
-    end = text.find("\n---", 4)
-    if end == -1:
-        raise RenderError(f"Unclosed front matter in {path.relative_to(ROOT)}")
-
-    values: dict[str, str] = {}
-    metadata_values: dict[str, str] = {}
-    in_metadata = False
-    for raw_line in text[4:end].splitlines():
-        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
-            continue
-        if ":" not in raw_line:
-            continue
-        key, raw_value = raw_line.split(":", 1)
-        value = raw_value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        if raw_line[:1].isspace():
-            if in_metadata:
-                metadata_values[key.strip()] = value
-            continue
-        in_metadata = key.strip() == "metadata"
-        values[key.strip()] = value
-
-    name = values.get("name") or path.parent.name
-    description = values.get("description")
-    if not description:
+    name, description = values.get("name"), values.get("description")
+    if not isinstance(name, str) or not name:
+        name = path.parent.name
+    if not isinstance(description, str) or not description.strip():
         raise RenderError(f"Missing description in {path.relative_to(ROOT)}")
-    version = metadata_values.get("version")
-    if not version:
+    version = metadata.get("version")
+    if not isinstance(version, str):
         raise RenderError(f"Missing metadata.version in {path.relative_to(ROOT)}")
     if not SEMVER_PATTERN.fullmatch(version):
         raise RenderError(
             f"Invalid metadata.version in {path.relative_to(ROOT)}: {version}"
         )
-    return name, version, first_sentence(description)
+    category = metadata.get("category")
+    if not isinstance(category, str) or category not in SKILL_CATEGORIES:
+        raise RenderError(
+            f"Invalid or missing metadata.category in {path.relative_to(ROOT)}"
+        )
+    return name, category, version, first_sentence(description)
 
 
 def skill_paths() -> list[Path]:
     skills_root = ROOT / "skills"
-    flat = list(skills_root.glob("*/SKILL.md"))
-    nested = list(skills_root.glob("*/*/SKILL.md"))
-    for flat_skill in flat:
-        if any(flat_skill.parent.glob("*/SKILL.md")):
-            raise RenderError(
-                "Collection root cannot contain SKILL.md: "
-                f"{flat_skill.relative_to(ROOT)}"
-            )
-    return sorted([*flat, *nested])
-
-
-def skill_collection(skill_path: Path) -> str:
-    parts = skill_path.relative_to(ROOT / "skills").parts
-    return parts[0] if len(parts) == 3 else "—"
+    paths = sorted(skills_root.rglob("SKILL.md"))
+    nested = next(
+        (path for path in paths if len(path.relative_to(skills_root).parts) != 2),
+        None,
+    )
+    if nested:
+        raise RenderError(
+            f"Standalone skill must be directly under skills/: {nested.relative_to(ROOT)}"
+        )
+    return paths
 
 
 def render_skills(headers: tuple[str, str, str, str]) -> str:
@@ -138,7 +113,7 @@ def render_skills(headers: tuple[str, str, str, str]) -> str:
 
     seen_names: set[str] = set()
     for skill_path in skill_paths():
-        name, version, description = parse_skill_front_matter(skill_path)
+        name, category, version, description = parse_skill_front_matter(skill_path)
         if name in seen_names:
             raise RenderError(f"Duplicate standalone skill name: {name}")
         if name != skill_path.parent.name:
@@ -153,7 +128,7 @@ def render_skills(headers: tuple[str, str, str, str]) -> str:
             + " | ".join(
                 [
                     f"[{markdown_cell(name)}]({link})",
-                    markdown_cell(skill_collection(skill_path)),
+                    markdown_cell(category),
                     markdown_cell(version),
                     markdown_cell(description),
                 ]
@@ -253,44 +228,6 @@ def render_plugins(headers: tuple[str, str, str, str, str]) -> str:
     return "\n".join(rows)
 
 
-def render_collection(collection: str) -> str:
-    members = [
-        path
-        for path in skill_paths()
-        if skill_collection(path) == collection
-    ]
-    if not members:
-        raise RenderError(f"Collection has no skills: {collection}")
-
-    rows = [
-        "<!-- generated by scripts/render-plugin-directory.py; do not edit manually -->",
-        "",
-        "| Skill | 版本 | 描述 |",
-        "|---|---:|---|",
-    ]
-    names: list[str] = []
-    for skill_path in members:
-        name, version, description = parse_skill_front_matter(skill_path)
-        names.append(name)
-        rows.append(
-            f"| [{markdown_cell(name)}](./{name}/SKILL.md) | "
-            f"{markdown_cell(version)} | {markdown_cell(description)} |"
-        )
-
-    skill_args = " ".join(f"--skill {name}" for name in names)
-    rows.extend(
-        [
-            "",
-            "从 `main` 安装本主题当前全部 skills：",
-            "",
-            "```bash",
-            f"{NPX_ADD_PREFIX} {skill_args}",
-            "```",
-        ]
-    )
-    return "\n".join(rows)
-
-
 def replace_block(text: str, block_name: str, rendered: str) -> str:
     start = f"<!-- {block_name}_START -->"
     end = f"<!-- {block_name}_END -->"
@@ -334,26 +271,6 @@ def main() -> int:
                 changed.append(path)
                 if not args.check:
                     path.write_text(rendered, encoding="utf-8")
-        collections = discovered_collections(ROOT)
-        readmes = collection_readmes(ROOT)
-        if set(collections) != set(readmes):
-            missing = sorted(set(collections) - set(readmes))
-            orphaned = sorted(set(readmes) - set(collections))
-            raise RenderError(
-                f"Collection README mismatch; missing={missing}, orphaned={orphaned}"
-            )
-        for collection in collections:
-            path = readmes[collection]
-            rendered = replace_block(
-                path.read_text(encoding="utf-8"),
-                "COLLECTION_MEMBERS",
-                render_collection(collection),
-            )
-            if rendered != path.read_text(encoding="utf-8"):
-                changed.append(path)
-                if not args.check:
-                    path.write_text(rendered, encoding="utf-8")
-
         if args.check and changed:
             rel_paths = ", ".join(path.relative_to(ROOT).as_posix() for path in changed)
             print(

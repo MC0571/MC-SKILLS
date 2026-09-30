@@ -6,7 +6,7 @@
 
 首次实际执行前，定位当前可用的 `tasks-owner`，读取入口与 `references/dev-orchestration-contract.json`。核验主版本和当前委任所需能力；不维护第二份 schema。缺失或不兼容时先给分析和可审阅草案，实际需要执行时再询问安装或更新。
 
-当前发布源为 `github:MC-and-his-Agents/MC-AGENT-KIT@main:skills/dev/tasks-owner`，安装目标为用户 Skill 目录中的 `tasks-owner`。安装和覆盖更新须有用户授权；已授权的同一次安装不重复询问，更新后重新核验。请求、安装状态及所需能力未变化时复用结论。
+当前发布源为 `github:MC-and-his-Agents/MC-AGENT-KIT@main:skills/tasks-owner`，安装目标为用户 Skill 目录中的 `tasks-owner`。安装和覆盖更新须有用户授权；已授权的同一次安装不重复询问，更新后重新核验。请求、安装状态及所需能力未变化时复用结论。
 
 使用宿主真实提供的创建、消息、等待和取消能力。用户明确指定的 runtime 是约束：按实际动作检查并尊重，不能静默降级。缺失无关 metadata 或默认配置线索，不阻塞已能证明安全的观察、结果核验或动作；已确认不符合用户要求时停止受影响的新执行并恢复原任务，其他范围继续。
 

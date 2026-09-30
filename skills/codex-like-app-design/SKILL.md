@@ -2,7 +2,8 @@
 name: codex-like-app-design
 description: Design, build, adapt, or review dense desktop AI workbenches using source-grounded patterns from Codex Desktop. Use for workbench shells, home launchers, thread/task views, intermediate progress timelines, task summaries, composers, command/search interactions, settings, side or bottom panels, component systems, responsive desktop behavior, keyboard and focus contracts, persistent long-running work, or source-accurate reproduction of covered Codex UI patterns.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
+  category: "Developer Tools"
 ---
 
 # Codex-like App Design

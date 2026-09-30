@@ -2,7 +2,8 @@
 name: pmo
 description: 在用户委任的单一 GitHub 仓库中，持续推进多个交付单元组成的总体产品目标，处理跨单元取舍、真实依赖、归属冲突和后继。完整执行需要兼容的 tasks-owner；单一交付范围、一次性实现、跨仓库协调或 Skill 自身维护不使用本 Skill。
 metadata:
-  version: "0.12.0"
+  version: "0.13.0"
+  category: "Business & Operations"
 ---
 
 # PMO
@@ -26,7 +27,7 @@ Owner 可以直接实施，按实际收益委派独立工作。PMO 不管理 Own
 
 ## 配套依赖
 
-首次实际委任或恢复 Owner 前，从当前 Skill 清单定位 `$tasks-owner`，读取其 `SKILL.md` 和唯一机器合同 `references/dev-orchestration-contract.json`，核验合同主版本及本次所需能力。当前配套为 PMO `0.12.0`、Owner `0.26.0`、合同主版本 `2`，版本号不能替代能力检查。
+首次实际委任或恢复 Owner 前，从当前 Skill 清单定位 `$tasks-owner`，读取其 `SKILL.md` 和唯一机器合同 `references/dev-orchestration-contract.json`，核验合同主版本及本次所需能力。当前配套为 PMO `0.13.0`、Owner `0.27.0`、合同主版本 `2`，版本号不能替代能力检查。
 
 兼容时复用检查结论，只有 Skill 或所需能力变化才重查。缺失或不兼容时继续只读分析与草案；首次需要执行时说明缺什么并询问安装或更新，已明确同意或拒绝的决定不重复询问。具体依赖及委任见 [owner-lifecycle.md](references/owner-lifecycle.md)。宿主能力和用户 runtime 要求只按 `$tasks-owner/references/codex-app.md` 处理。
 

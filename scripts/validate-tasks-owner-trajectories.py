@@ -13,7 +13,7 @@ from tasks_owner_trajectory_replay import evaluate, readback_digest
 from tasks_owner_trajectory_schema import RULES, schema_errors
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CASES = ROOT / "skills/dev/tasks-owner/evals/trajectory_cases.jsonl"
+DEFAULT_CASES = ROOT / "skills/tasks-owner/evals/trajectory_cases.jsonl"
 
 
 def load_cases(path: Path) -> list[dict[str, Any]]:

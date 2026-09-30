@@ -2,7 +2,8 @@
 name: multi-agent
 description: 在用户要求多 Agent 协作、委派或并行工作时，协调主 Agent 与 subagent 的职责、模型路由、交接、审查和集成；普通单 Agent 任务不因此启动委派。
 metadata:
-  version: 0.2.0
+  version: 0.2.1
+  category: "Productivity"
 ---
 
 # 多 Agent 协作

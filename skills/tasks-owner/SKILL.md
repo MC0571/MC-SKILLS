@@ -2,7 +2,8 @@
 name: tasks-owner
 description: 在用户明确委任或有效 PMO 委派下，持续负责一个可定位交付范围的实现、验证和收口。默认由当前 Owner 直接执行；只有独立工作确有收益时委派。评审、解释、Skill 维护、一次性修复或未明确委任时不激活。
 metadata:
-  version: "0.26.0"
+  version: "0.27.0"
+  category: "Developer Tools"
 ---
 
 # Tasks Owner

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CASES = ROOT / "skills/dev/pmo/evals/trajectory_cases.jsonl"
+DEFAULT_CASES = ROOT / "skills/pmo/evals/trajectory_cases.jsonl"
 SCHEMA_VERSION = "pmo-trajectory.v2"
 TERMINAL = {"completed", "cancelled", "superseded"}
 EVENTS = {"unchanged", "progress", "merged", "completed", "cancelled", "superseded", "outcome_verified", "blocked", "ready"}

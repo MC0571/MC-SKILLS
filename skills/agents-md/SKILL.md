@@ -2,7 +2,8 @@
 name: agents-md
 description: 创建、审查、重构或更新 AGENTS.md、CLAUDE.md 等仓库指令。调查项目目标、工程取舍、跨模块不变量与真实失败，提炼能改变 Agent 决策的规则，并核实作用域和验证依据。用户要求维护指令或沉淀工程经验时使用；普通编码中仅需遵守指令、总结使用文档或生成通用模板时不主动触发。
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
+  category: "Developer Tools"
 ---
 
 # 项目工程判断提炼与指令维护

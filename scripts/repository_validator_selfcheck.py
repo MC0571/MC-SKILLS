@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import importlib.util
+import json
 import os
 import shlex
 import shutil
@@ -12,12 +13,8 @@ import tempfile
 import time
 from pathlib import Path
 
-from repository_collections import (
-    NPX_ADD_PREFIX,
-    SKILLS_SOURCE,
-    validate_collection_readmes,
-    validate_npx_readmes,
-)
+from repository_artifacts import artifact_versions_at_ref, snapshot
+from repository_skills import NPX_ADD_PREFIX, SKILLS_SOURCE, validate_npx_readmes
 
 
 def write_skill(
@@ -25,11 +22,13 @@ def write_skill(
     name: str,
     description: str = "test",
     version: str = "0.1.0",
+    category: str | None = "Developer Tools",
 ) -> None:
     path.mkdir(parents=True, exist_ok=True)
+    category_line = f"  category: {category}\n" if category is not None else ""
     (path / "SKILL.md").write_text(
         f"---\nname: {name}\ndescription: {description}\n"
-        f"metadata:\n  version: {version}\n---\n",
+        f"metadata:\n  version: {version}\n{category_line}---\n",
         encoding="utf-8",
     )
 
@@ -172,40 +171,23 @@ def write_code_atlas_plugin(root: Path, *, valid: bool = True) -> Path:
     return plugin
 
 
-def write_collection_readme(
-    root: Path,
-    name: str,
-    member: str,
-    *,
-    include_member: bool = True,
-    correct_command: bool = False,
-) -> None:
-    path = root / "skills" / name / "README.md"
-    member_row = f"[{member}](./{member}/SKILL.md)\n" if include_member else ""
-    repository = (
-        f"{SKILLS_SOURCE} --full-depth"
-        if correct_command
-        else "wrong/repository"
-    )
-    path.write_text(
-        "<!-- COLLECTION_MEMBERS_START -->\n"
-        f"{member_row}"
-        f"npx skills add {repository} --skill {member}\n"
-        "<!-- COLLECTION_MEMBERS_END -->\n",
-        encoding="utf-8",
-    )
-
-
 def expect(errors: list[str], source: str, rule: str, failures: list[str]) -> None:
     if not any(source in error and rule in error for error in errors):
         failures.append(f"{source} {rule} self-check did not fail")
 
 
 def check_skills(root, validate_skills, version_bump_errors, failures) -> None:
-    for collection in ("one", "two"):
-        write_skill(root / "skills" / collection / "same", "same")
-    _, skill_errors = validate_skills(root)
-    expect(skill_errors, "skills/two/same", "[skill-unique-id]", failures)
+    write_skill(root / "skills" / "nested" / "blocked", "blocked")
+    write_skill(root / "skills" / "missing-category", "missing-category", category=None)
+    write_skill(root / "skills" / "unknown-category", "unknown-category", category="dev")
+    wrong_type = root / "skills" / "category-type"
+    write_skill(wrong_type, "category-type")
+    (wrong_type / "SKILL.md").write_text(
+        (wrong_type / "SKILL.md").read_text(encoding="utf-8").replace(
+            "category: Developer Tools", "category: true"
+        ),
+        encoding="utf-8",
+    )
     missing = root / "skills" / "missing"
     missing.mkdir()
     (missing / "SKILL.md").write_text(
@@ -219,12 +201,85 @@ def check_skills(root, validate_skills, version_bump_errors, failures) -> None:
         encoding="utf-8",
     )
     _, skill_errors = validate_skills(root)
+    expect(skill_errors, "skills/nested/blocked", "[skill-layout]", failures)
+    expect(skill_errors, "skills/missing-category", "[skill-category]", failures)
+    expect(skill_errors, "skills/unknown-category", "[skill-category]", failures)
+    expect(skill_errors, "skills/category-type", "[skill-category]", failures)
     expect(skill_errors, "skills/missing", "[skill-version]", failures)
     expect(skill_errors, "skills/invalid-description", "[skill-description]", failures)
-    current = {"skill:same": ("skills/one/same", "0.1.0")}
-    previous = {"skill:same": ("skills/one/same", "0.1.0")}
-    unchanged = version_bump_errors(current, previous, {"skills/one/same/SKILL.md"})
-    expect(unchanged, "skills/one/same", "[artifact-version-bump]", failures)
+
+    renderer_root = root / "renderer"
+    write_skill(
+        renderer_root / "skills" / "metadata-source",
+        "metadata-source",
+        category="Data & Analytics",
+    )
+    spec = importlib.util.spec_from_file_location(
+        "render_plugin_directory", Path(__file__).with_name("render-plugin-directory.py")
+    )
+    if spec is None or spec.loader is None:
+        failures.append("renderer self-check could not load render-plugin-directory.py")
+        return
+    renderer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(renderer)
+    renderer.ROOT = renderer_root
+    rendered = renderer.render_skills(("Skill", "Category", "Version", "Description"))
+    row = next((line for line in rendered.splitlines() if "metadata-source" in line), "")
+    if "| Data & Analytics |" not in row:
+        failures.append("renderer category self-check did not use metadata.category")
+
+
+def check_historical_skill_migration(root, validate_skills, version_bump_errors, failures) -> None:
+    repository = root / "history"
+    repository.mkdir()
+    git(repository, "init", "-b", "main")
+    git(repository, "config", "user.name", "self-check")
+    git(repository, "config", "user.email", "self-check@example.invalid")
+    write_skill(
+        repository / "skills" / "dev" / "pmo",
+        "pmo",
+        version="0.12.0",
+        category=None,
+    )
+    base = commit_all(repository, "legacy nested skill")
+    previous = artifact_versions_at_ref(repository, base)
+    if previous.get("skill:pmo") != ("skills/dev/pmo", "0.12.0"):
+        failures.append("historical nested skill snapshot did not preserve its old path/version")
+    if "category" in snapshot(repository, base)["artifacts"][0]:
+        failures.append("historical nested skill snapshot inferred category from its path")
+
+    (repository / "skills" / "dev" / "pmo").rename(repository / "skills" / "pmo")
+    write_skill(
+        repository / "skills" / "pmo",
+        "pmo",
+        version="0.12.0",
+        category="Developer Tools",
+    )
+    current, errors = validate_skills(repository)
+    if errors:
+        failures.append(f"flat migration fixture failed current validation: {errors}")
+    changed = set(git(repository, "diff", "--name-only", base, "--").splitlines())
+    expect(
+        version_bump_errors(current, previous, changed),
+        "skills/pmo",
+        "[artifact-version-bump]",
+        failures,
+    )
+
+    write_skill(
+        repository / "skills" / "pmo",
+        "pmo",
+        version="0.13.0",
+        category="Developer Tools",
+    )
+    current, errors = validate_skills(repository)
+    if errors:
+        failures.append(f"upgraded flat migration fixture failed current validation: {errors}")
+    if version_bump_errors(current, previous, changed):
+        failures.append("a correctly upgraded nested-to-flat migration failed version validation")
+    upgraded = commit_all(repository, "flatten and upgrade skill")
+    if snapshot(repository, upgraded)["artifacts"][0].get("category") != "Developer Tools":
+        failures.append("artifact snapshot did not read category from metadata.category")
 
 
 def check_plugins(root, validate_plugins, failures) -> None:
@@ -287,18 +342,7 @@ def check_plugins(root, validate_plugins, failures) -> None:
     expect(invalid_errors, "plugins/code-atlas/skills/code-atlas/assets/evidence-pack.schema.json", "[code-atlas-schema-contract]", failures)
 
 
-def check_collections(root, failures) -> None:
-    errors = validate_collection_readmes(root)
-    expect(errors, "skills/one/README.md", "[collection-readme]", failures)
-    write_collection_readme(root, "one", "same", include_member=False, correct_command=True)
-    write_collection_readme(root, "two", "same")
-    orphan = root / "skills" / "orphan"
-    orphan.mkdir()
-    (orphan / "README.md").write_text("# orphan\n", encoding="utf-8")
-    errors = validate_collection_readmes(root)
-    expect(errors, "skills/one/README.md", "[collection-members]", failures)
-    expect(errors, "skills/two/README.md", "[collection-command]", failures)
-    expect(errors, "skills/orphan/README.md", "[collection-orphan]", failures)
+def check_npx_readmes(root, failures) -> None:
     (root / "README.md").write_text(
         "npx skills add MC-and-his-Agents/MC-AGENT-KIT --skill same\n",
         encoding="utf-8",
@@ -748,8 +792,9 @@ def run_self_test(
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         check_skills(root, validate_skills, version_bump_errors, failures)
+        check_historical_skill_migration(root, validate_skills, version_bump_errors, failures)
         check_plugins(root, validate_plugins, failures)
-        check_collections(root, failures)
+        check_npx_readmes(root, failures)
         check_marketplace_identity(root, validate_marketplace, failures)
     check_code_atlas_hook_runtime(failures)
     return failures

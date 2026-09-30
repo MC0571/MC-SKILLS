@@ -2,7 +2,8 @@
 name: write-a-goal
 description: 起草、优化或设置符合 OpenAI《Follow a goal》指南的 Codex goal，并为 GitHub Issue 提供创建前草案、更新、修订、补全和校验。当用户直接要求，或 Agent、Owner 工作流、其他 Skill 正在创建或修改 feature、bug、Work Item、FR、milestone Issue，以及补写目标、验收、范围、依赖、验证或决策条件时使用。根据请求选择 copyable_goal_command、active_goal_api 或 github_issue；Issue 模式不输出 /goal 或运行态合同字段。默认使用用户语言，语言不明确时使用中文。
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
+  category: "Productivity"
 ---
 
 # 编写 Codex Goal 或 GitHub Issue

@@ -4,12 +4,12 @@
   "authority_source": "tasks-owner",
   "compatible_skills": {
     "pmo": {
-      "tested_artifact_version": "0.12.0",
+      "tested_artifact_version": "0.13.0",
       "minimum_compatible_version": "0.12.0",
       "required_contract_schema_major": 2
     },
     "tasks-owner": {
-      "tested_artifact_version": "0.26.0",
+      "tested_artifact_version": "0.27.0",
       "minimum_compatible_version": "0.26.0",
       "required_contract_schema_major": 2
     }
