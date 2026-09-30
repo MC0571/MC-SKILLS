@@ -1,0 +1,233 @@
+{
+  "research_date": "2026-09-30",
+  "language": "zh-CN",
+  "method": "GitHub 只读连接器读取文件及搜索结果；官方公开文档通过网页读取。未执行七个仓库的代码、测试、安装或发布操作。",
+  "snapshot_note": "提交引用由本次搜索结果提供，作为复查锚点；不声称是发布版或统一时刻的最新 HEAD。默认分支读取与固定提交读取已分别标注，未对所有正文执行跨引用字节一致性校验。",
+  "scope_note": "根指令分析及定向局部文档/配置取证；并非全仓库全部 AGENTS.md/CLAUDE.md 的穷尽审计。截断与抽样处已说明，不据此作缺失性结论。",
+  "repositories": [
+    {
+      "id": "dsh",
+      "repository": "deepseek-ai/deepseek-harness",
+      "reference_commit": "639ed015397290b3745d163aafe02ffee4aa3f84",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/AGENTS.md",
+          "read_coverage": "默认分支正文及固定提交末尾；长响应分段补读",
+          "reported_blob_sha": "fc94452a0f7b32bc3181cf8062f6914420d59781"
+        },
+        {
+          "path": "packages/AGENTS.md",
+          "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/packages/AGENTS.md",
+          "read_coverage": "固定提交，返回全文",
+          "reported_blob_sha": "f0c49d55e5965a0e4b02ef7d5f0e2f05a1c36daa"
+        },
+        {
+          "path": "docs/defensive-patterns.md",
+          "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/docs/defensive-patterns.md",
+          "read_coverage": "固定提交，返回全文",
+          "reported_blob_sha": "9db582354628a13abd43c5bd052dbbfd6e52f79f"
+        },
+        {
+          "path": "docs/testing.md",
+          "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/docs/testing.md",
+          "read_coverage": "固定提交，返回全文",
+          "reported_blob_sha": "c726270b796f6de125a762436ccd5bc7c74ba3bc"
+        },
+        {
+          "path": "docs/postmortem/0001-acp-default-export-drops-inject.md",
+          "url": "https://github.com/deepseek-ai/deepseek-harness/blob/639ed015397290b3745d163aafe02ffee4aa3f84/docs/postmortem/0001-acp-default-export-drops-inject.md",
+          "read_coverage": "固定提交，返回全文；历史结果为来源自述",
+          "reported_blob_sha": "d5325b3f051669111ad7c097c395744553d57c6c"
+        }
+      ]
+    },
+    {
+      "id": "od",
+      "repository": "nexu-io/open-design",
+      "reference_commit": "5b19dfa4351b3eed33826ee72746a7c653c23a54",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "url": "https://github.com/nexu-io/open-design/blob/5b19dfa4351b3eed33826ee72746a7c653c23a54/AGENTS.md",
+          "read_coverage": "默认正文与固定提交260–480行、470行至末尾；主要章节与末尾，部分长响应截断，非逐行穷尽审计",
+          "reported_blob_sha": "87a1fcbd46d2341393ecc21fde036bf70f29116f"
+        },
+        {
+          "path": "CLAUDE.md",
+          "url": "https://github.com/nexu-io/open-design/blob/5b19dfa4351b3eed33826ee72746a7c653c23a54/CLAUDE.md",
+          "read_coverage": "默认分支，返回全文",
+          "reported_blob_sha": "43c994c2d3617f947bcb5adf1933e21dabe46bb5"
+        },
+        {
+          "path": "e2e/AGENTS.md",
+          "url": "https://github.com/nexu-io/open-design/blob/5b19dfa4351b3eed33826ee72746a7c653c23a54/e2e/AGENTS.md",
+          "read_coverage": "固定提交1–140行，局部规则抽样",
+          "reported_blob_sha": "2397aabef6a964203cdd9e716a4b296811e8514e"
+        },
+        {
+          "path": "package.json",
+          "url": "https://github.com/nexu-io/open-design/blob/5b19dfa4351b3eed33826ee72746a7c653c23a54/package.json",
+          "read_coverage": "固定提交1–70行；含完整 scripts 对象",
+          "reported_blob_sha": "5dff4b0de00a1050373723b2d1e424026e16cce0"
+        }
+      ]
+    },
+    {
+      "id": "bu",
+      "repository": "browser-use/browser-use",
+      "reference_commit": "4cbe921673b48a488f5415d9159249afd12a625b",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "url": "https://github.com/browser-use/browser-use/blob/4cbe921673b48a488f5415d9159249afd12a625b/AGENTS.md",
+          "read_coverage": "默认开头规则与嵌入文档抽样；固定提交850行至末尾，包含本地开发与测试入口",
+          "reported_blob_sha": "d8f2f6150b237b1a4bbd52e564831460f5083a86"
+        },
+        {
+          "path": "pyproject.toml",
+          "url": "https://github.com/browser-use/browser-use/blob/4cbe921673b48a488f5415d9159249afd12a625b/pyproject.toml",
+          "read_coverage": "固定提交1–100行；含 requires-python",
+          "reported_blob_sha": "5c79c94fef1d1ee831ce85333975cc4288e2b126"
+        },
+        {
+          "path": "bin/test.sh",
+          "url": "https://github.com/browser-use/browser-use/blob/4cbe921673b48a488f5415d9159249afd12a625b/bin/test.sh",
+          "read_coverage": "固定提交，返回全文；仅核对定义，未执行",
+          "reported_blob_sha": "741252d9a23db52be2c5fde3f110c4842b04813e"
+        }
+      ]
+    },
+    {
+      "id": "pt",
+      "repository": "DietrichGebert/ponytail",
+      "reference_commit": "e3ba2aa6f1e6f0bc4d69eb09c9f0d0a93af56156",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "url": "https://github.com/DietrichGebert/ponytail/blob/e3ba2aa6f1e6f0bc4d69eb09c9f0d0a93af56156/AGENTS.md",
+          "read_coverage": "默认分支，返回全文",
+          "reported_blob_sha": "bc3595d1a07cff2b135139cadfa4c17ec412667b"
+        }
+      ]
+    },
+    {
+      "id": "oc",
+      "repository": "anomalyco/opencode",
+      "reference_commit": "7945de208964a49300d7f770d1a71d078db9a4c4",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "url": "https://github.com/anomalyco/opencode/blob/7945de208964a49300d7f770d1a71d078db9a4c4/AGENTS.md",
+          "read_coverage": "默认分支 dev，返回全文",
+          "reported_blob_sha": "cd2327e888119bb084895b615f5abc8f81afcc3f"
+        },
+        {
+          "path": "package.json",
+          "url": "https://github.com/anomalyco/opencode/blob/7945de208964a49300d7f770d1a71d078db9a4c4/package.json",
+          "read_coverage": "固定提交1–100行；含完整 scripts 对象",
+          "reported_blob_sha": "59bf0501f096ba00f5174742c584960c808fbec7"
+        },
+        {
+          "path": ".opencode/command/learn.md",
+          "url": "https://github.com/anomalyco/opencode/blob/7945de208964a49300d7f770d1a71d078db9a4c4/.opencode/command/learn.md",
+          "read_coverage": "固定提交，返回全文",
+          "reported_blob_sha": "fe4965a5887e0e1c175f0b3d5961f343353eb9e4"
+        }
+      ]
+    },
+    {
+      "id": "cx",
+      "repository": "openai/codex",
+      "reference_commit": "d5e6526362f6efa322ca091b61eda495f16ffb30",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "url": "https://github.com/openai/codex/blob/d5e6526362f6efa322ca091b61eda495f16ffb30/AGENTS.md",
+          "read_coverage": "默认分支主要正文及固定提交280行至末尾；按主题分析",
+          "reported_blob_sha": "fd0b9ed9e781bdb29bb11a8f62b777ad773fec81"
+        },
+        {
+          "path": "justfile",
+          "url": "https://github.com/openai/codex/blob/d5e6526362f6efa322ca091b61eda495f16ffb30/justfile",
+          "read_coverage": "固定提交1–170行；检查测试、格式和 Bazel 入口定义",
+          "reported_blob_sha": "3614939c72498ec91690e6a01b30f21f76e9a0ab"
+        }
+      ]
+    },
+    {
+      "id": "cc",
+      "repository": "anthropics/claude-cookbooks",
+      "reference_commit": "d7265d6ae994ccd8429db0594b000073b2f9ad43",
+      "files": [
+        {
+          "path": "CLAUDE.md",
+          "url": "https://github.com/anthropics/claude-cookbooks/blob/d7265d6ae994ccd8429db0594b000073b2f9ad43/CLAUDE.md",
+          "read_coverage": "指定 main，返回全文",
+          "reported_blob_sha": "0c54d4a4113643f91bb0ee2a767a13f2cd9a00e4"
+        },
+        {
+          "path": "Makefile",
+          "url": "https://github.com/anthropics/claude-cookbooks/blob/d7265d6ae994ccd8429db0594b000073b2f9ad43/Makefile",
+          "read_coverage": "固定提交，返回全文",
+          "reported_blob_sha": "369e841f6a16fea4745b14cb23cad3ac6c8049df"
+        },
+        {
+          "path": "claude_agent_sdk/chief_of_staff_agent/CLAUDE.md",
+          "url": "https://github.com/anthropics/claude-cookbooks/blob/d7265d6ae994ccd8429db0594b000073b2f9ad43/claude_agent_sdk/chief_of_staff_agent/CLAUDE.md",
+          "read_coverage": "搜索片段；仅用于识别示例任务上下文，非仓库规范"
+        }
+      ]
+    }
+  ],
+  "official_sources": [
+    {
+      "id": "skill-docs",
+      "url": "https://learn.chatgpt.com/docs/build-skills",
+      "original_url": "https://developers.openai.com/codex/skills/",
+      "use": "SKILL.md、渐进加载、.agents/skills 安装目录、agents/openai.yaml 可选元数据"
+    },
+    {
+      "id": "codex-agents-docs",
+      "url": "https://learn.chatgpt.com/docs/agent-configuration/agents-md",
+      "original_url": "https://developers.openai.com/codex/guides/agents-md/",
+      "use": "客户端作用域、导入不能泛化、实际加载核验"
+    },
+    {
+      "id": "agent-skills-spec",
+      "url": "https://agentskills.io/specification",
+      "use": "技能格式参考；本包只依赖 name/description 和正文、可选文件夹"
+    },
+    {
+      "id": "claude-memory-docs",
+      "url": "https://code.claude.com/docs/en/memory",
+      "use": "CLAUDE.md 与 @ 文件导入机制的核对入口"
+    }
+  ],
+  "user_supplied_source": {
+    "title": "AGENTS.md 工程最佳实践研究报告",
+    "report_date": "2026-09-12",
+    "availability": "本次会话提供的810行文本；未在包中复制原文",
+    "used_sections": [
+      "执行摘要",
+      "标准定位与作用域模型",
+      "维度化最佳实践",
+      "测试、CI 与工具链",
+      "维护",
+      "结论与关键资料"
+    ],
+    "used_line_ranges": [
+      "9-21",
+      "55-87",
+      "93-121",
+      "184-186",
+      "230-253",
+      "311-325",
+      "662-689",
+      "695-755",
+      "790-810"
+    ],
+    "note": "作为用户指定研究基础，不将其中时效性或跨客户端概括不加核实地升级为当前通用事实。"
+  },
+  "copyright_note": "仅保存来源元数据与原创中文分析，不分发上述仓库的指令全文。"
+}

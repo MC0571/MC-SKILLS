@@ -48,6 +48,7 @@ Each standalone skill owns an independent SemVer in its `SKILL.md` `metadata.ver
 
 | Skill | Collection | Version | Description |
 |---|---|---:|---|
+| [agents-md](./skills/agents-md/SKILL.md) | — | 0.1.0 | 创建、审查、重构或更新 AGENTS.md、CLAUDE.md 等仓库指令。 |
 | [image-art-direction](./skills/creativity/image-art-direction/SKILL.md) | creativity | 0.6.3 | 将人物、角色、产品、食物、建筑、室内、电影或纪实场景的静态图像需求转为连贯、可执行、可检视的视觉规格，并按需生成、编辑、评审或定向修订图像。 |
 | [codex-like-app-design](./skills/design/codex-like-app-design/SKILL.md) | design | 0.1.0 | Design, build, adapt, or review dense desktop AI workbenches using source-grounded patterns from Codex Desktop. |
 | [pmo](./skills/dev/pmo/SKILL.md) | dev | 0.12.0 | 在用户委任的单一 GitHub 仓库中，持续推进多个交付单元组成的总体产品目标，处理跨单元取舍、真实依赖、归属冲突和后继。 |

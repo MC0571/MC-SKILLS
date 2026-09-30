@@ -1,0 +1,29 @@
+{
+  "record_date": "2026-09-30",
+  "python_executed": "3.13.5",
+  "os_executed": "Linux",
+  "automated_tests": {
+    "total": 47,
+    "passed": 47,
+    "failed": 0,
+    "skipped": 0,
+    "inspector_tests": 38,
+    "package_tests": 9
+  },
+  "metadata_yaml_parsed": true,
+  "python310_syntax_checked": true,
+  "python310_runtime_executed": false,
+  "local_markdown_targets_checked": true,
+  "research_source_references_resolved": true,
+  "host_installation_performed": false,
+  "host_loading_verified": false,
+  "behavioral_evaluation_cases_defined": 16,
+  "behavioral_evaluation_runs": 0,
+  "third_party_repository_tests_run": 0,
+  "network_or_repo_commands_run_by_inventory": false,
+  "notes": [
+    "单元测试覆盖静态受控文件树；不能代替操作系统安全隔离。",
+    "测试日志反映本次 Linux / Python 3.13.5 环境，不代表其他平台已经实测。",
+    "16 个场景是合成评估材料，不是已通过的 Agent 行为结果。"
+  ]
+}

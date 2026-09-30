@@ -1,0 +1,6 @@
+interface:
+  display_name: "AGENTS.md 工程判断与维护"
+  short_description: "从项目目标、真实失败和工程约束中提炼能指导决策的仓库指令，并核实作用域与验证依据"
+  default_prompt: "使用 $agents-md 调查当前仓库的关键工程判断，创建或修订有事实依据的 AGENTS.md；保留项目取舍与有效约束，并说明实际验证结果。"
+policy:
+  allow_implicit_invocation: true
