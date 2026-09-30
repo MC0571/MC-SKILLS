@@ -64,7 +64,7 @@ unset CLAWHUB_TOKEN
 预检与发布：
 
 ```bash
-clawhub inspect "$CLAWHUB_SLUG" --json
+clawhub inspect "@$CLAWHUB_PUBLISHER/$CLAWHUB_SLUG" --json
 clawhub skill publish ./my-skill --slug "$CLAWHUB_SLUG" --dry-run --json
 clawhub skill publish ./my-skill \
   --slug my-skill \
@@ -73,9 +73,9 @@ clawhub skill publish ./my-skill \
   --changelog "Initial release"
 ```
 
-`clawhub publish` 是旧别名；只有现代子命令不可用时才使用。不要从目录名或 Skill 内部 `name` 推断 slug。配置为更新时，`inspect` 必须返回预期 owner；配置为新建时，必须确认 slug 尚不存在。远端 owner 不同表示 slug 冲突，应选择新 slug，不能提高本地版本后覆盖。
+`clawhub publish` 是旧别名；只有现代子命令不可用时才使用。不要从目录名或 Skill 内部 `name` 推断 slug。ClawHub 条目以 publisher+slug 标识；检查时使用 `@<publisher>/<slug>`，而非裸 slug。其他 publisher 下的同名 slug 不占用当前 publisher 的条目。`inspect` 返回 404 不能单独证明条目不存在；正式发布服务端会按 publisher+slug 原子校验创建或更新，CI 必须先验证登录账号属于预期 publisher，再依赖该服务器端约束。若 inspect 成功，更新必须确认 owner/publisher 正确。
 
-归属校验通过后，更新模式再检查 dry-run JSON 的 `latestVersion`：本地显式版本必须严格更高；相等表示该版本已经发布，更低会把默认 `latest` 标签降级，两者都应 fail-closed。新 Skill 默认从 `1.0.0` 开始；`--version` 用于显式指定可复现版本。修正配置或版本后只重跑失败的 job，不要重放另一市场已成功的发布。
+归属校验通过后，更新模式检查目标 publisher 条目的公开 `latestVersion`，本地显式版本必须更高；新 Skill 默认从 `1.0.0` 开始；`--version` 用于显式指定可复现版本。修正配置或版本后只重跑失败的平台与 Skill，不要重放另一市场已成功的发布。
 
 批量同步是单向发布动作，必须由用户明确授权并固定根目录：
 

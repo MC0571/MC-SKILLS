@@ -13,7 +13,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from repository_artifacts import artifact_versions_at_ref, snapshot
+from repository_artifacts import artifact_versions_at_ref, changed_skill_matrix, snapshot
 from repository_skills import NPX_ADD_PREFIX, SKILLS_SOURCE, validate_npx_readmes
 
 
@@ -282,6 +282,56 @@ def check_historical_skill_migration(root, validate_skills, version_bump_errors,
     upgraded = commit_all(repository, "flatten and upgrade skill")
     if snapshot(repository, upgraded)["artifacts"][0].get("category") != "Developer Tools":
         failures.append("artifact snapshot did not read category from metadata.category")
+
+
+def check_skill_release_matrix(root: Path, failures: list[str]) -> None:
+    repository = root / "release-matrix"
+    repository.mkdir()
+    git(repository, "init", "-b", "main")
+    git(repository, "config", "user.name", "self-check")
+    git(repository, "config", "user.email", "self-check@example.invalid")
+    write_skill(repository / "skills" / "existing", "existing")
+    write_plugin(repository, "plugin")
+    base = commit_all(repository, "baseline")
+
+    result, errors = changed_skill_matrix(repository, base, base)
+    if errors or result["matrix"]["include"]:
+        failures.append(f"release matrix did not stay empty without changes: {errors}")
+
+    private_skill = repository / "plugins" / "plugin" / "skills" / "plugin-private" / "SKILL.md"
+    private_skill.write_text(private_skill.read_text(encoding="utf-8") + "plugin-only change\n", encoding="utf-8")
+    plugin_change = commit_all(repository, "plugin-only change")
+    result, errors = changed_skill_matrix(repository, base, plugin_change)
+    if errors or result["matrix"]["include"]:
+        failures.append(f"plugin changes entered the standalone Skill matrix: {errors}")
+
+    write_skill(repository / "skills" / "added", "added")
+    added = commit_all(repository, "add standalone Skill")
+    result, errors = changed_skill_matrix(repository, plugin_change, added)
+    if errors or result["matrix"]["include"] != [
+        {"name": "added", "path": "skills/added", "version": "0.1.0", "change": "added"}
+    ]:
+        failures.append(f"new Skill did not enter the release matrix: {result['matrix']} {errors}")
+
+    (repository / "README.md").write_text("unrelated\n", encoding="utf-8")
+    unrelated = commit_all(repository, "unrelated change")
+    result, errors = changed_skill_matrix(repository, added, unrelated)
+    if errors or result["matrix"]["include"]:
+        failures.append(f"unrelated changes entered the release matrix: {errors}")
+
+    write_skill(repository / "skills" / "added", "added", version="0.2.0", description="updated")
+    updated = commit_all(repository, "bump and update Skill")
+    result, errors = changed_skill_matrix(repository, unrelated, updated)
+    if errors or result["matrix"]["include"] != [
+        {"name": "added", "path": "skills/added", "version": "0.2.0", "change": "updated"}
+    ]:
+        failures.append(f"versioned content update did not enter the release matrix: {result['matrix']} {errors}")
+
+    write_skill(repository / "skills" / "added", "added", description="changed without version bump")
+    missing_bump = commit_all(repository, "change without bump")
+    _, errors = changed_skill_matrix(repository, updated, missing_bump)
+    if not any("artifact-version-bump" in error for error in errors):
+        failures.append("release matrix did not block changed Skill content without a version bump")
 
 
 def check_plugins(root, validate_plugins, failures) -> None:
@@ -795,6 +845,7 @@ def run_self_test(
         root = Path(temporary)
         check_skills(root, validate_skills, version_bump_errors, failures)
         check_historical_skill_migration(root, validate_skills, version_bump_errors, failures)
+        check_skill_release_matrix(root, failures)
         check_plugins(root, validate_plugins, failures)
         check_npx_readmes(root, failures)
         check_marketplace_identity(root, validate_marketplace, failures)

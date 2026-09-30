@@ -131,7 +131,9 @@ jobs:
           SKILL_PATH: ${{ matrix.path }}
         run: |
           inspect_status=0
-          clawhub inspect "$CLAWHUB_SLUG" --json \
+          publisher="${CLAWHUB_PUBLISHER#@}"
+          scoped_target="@$publisher/$CLAWHUB_SLUG"
+          clawhub inspect "$scoped_target" --json \
             > "$RUNNER_TEMP/clawhub-inspect.json" \
             2> "$RUNNER_TEMP/clawhub-inspect.err" || inspect_status=$?
           python3 .github/scripts/clawhub_target.py \
@@ -141,7 +143,8 @@ jobs:
             --owner "$CLAWHUB_OWNER" \
             --inspect-json "$RUNNER_TEMP/clawhub-inspect.json" \
             --inspect-error "$RUNNER_TEMP/clawhub-inspect.err" \
-            --inspect-status "$inspect_status"
+            --inspect-status "$inspect_status" \
+            --allow-atomic-create
       - name: Dry-run ClawHub
         env:
           CLAWHUB_SLUG: ${{ steps.target.outputs.slug }}
@@ -149,6 +152,8 @@ jobs:
           owner_args=()
           if [[ -n "$CLAWHUB_OWNER" ]]; then
             owner_args=(--owner "$CLAWHUB_OWNER")
+          elif [[ -n "$CLAWHUB_PUBLISHER" ]]; then
+            owner_args=(--owner "$CLAWHUB_PUBLISHER")
           fi
           clawhub --cli-version
           clawhub skill publish "${{ matrix.path }}" \
@@ -201,11 +206,18 @@ jobs:
           skillhub login --key "$SKILLHUB_KEY" --host "$SKILLHUB_HOST"
           skillhub auth whoami
       - name: Publish to Tencent SkillHub
+        env:
+          SKILL_NAME: ${{ matrix.name }}
+          SKILL_VERSION: ${{ matrix.version }}
         run: |
+          raw_result="$RUNNER_TEMP/tencent-publish-raw.json"
           skillhub publish "${{ matrix.path }}" \
             --host "$SKILLHUB_HOST" \
             --changelog "自动发布 ${GITHUB_SHA::12}" \
-            --json > "$RUNNER_TEMP/tencent-publish.json"
+            --json > "$raw_result"
+          jq -e --arg name "$SKILL_NAME" --arg version "$SKILL_VERSION" \
+            'select(type == "object" and has("skillId") and has("status") and has("publicUrl") and (.status | type == "string")) | {name: $name, version: $version, skillId, status, publicUrl}' \
+            "$raw_result" > "$RUNNER_TEMP/tencent-publish.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -247,13 +259,19 @@ jobs:
         run: |
           clawhub login --token "$CLAWHUB_TOKEN"
           clawhub whoami
+          python3 .github/scripts/clawhub_target.py \
+            --publisher "$CLAWHUB_PUBLISHER" \
+            --owner "$CLAWHUB_OWNER" \
+            --verify-identity
       - name: Verify ClawHub slug ownership
         env:
           CLAWHUB_SLUG: ${{ steps.target.outputs.slug }}
           SKILL_PATH: ${{ matrix.path }}
         run: |
           inspect_status=0
-          clawhub inspect "$CLAWHUB_SLUG" --json \
+          publisher="${CLAWHUB_PUBLISHER#@}"
+          scoped_target="@$publisher/$CLAWHUB_SLUG"
+          clawhub inspect "$scoped_target" --json \
             > "$RUNNER_TEMP/clawhub-inspect.json" \
             2> "$RUNNER_TEMP/clawhub-inspect.err" || inspect_status=$?
           python3 .github/scripts/clawhub_target.py \
@@ -263,10 +281,13 @@ jobs:
             --owner "$CLAWHUB_OWNER" \
             --inspect-json "$RUNNER_TEMP/clawhub-inspect.json" \
             --inspect-error "$RUNNER_TEMP/clawhub-inspect.err" \
-            --inspect-status "$inspect_status"
+            --inspect-status "$inspect_status" \
+            --allow-atomic-create
       - name: Publish to ClawHub
         env:
           CLAWHUB_SLUG: ${{ steps.target.outputs.slug }}
+          SKILL_NAME: ${{ matrix.name }}
+          SKILL_VERSION: ${{ matrix.version }}
         run: |
           owner_args=()
           if [[ -n "$CLAWHUB_OWNER" ]]; then
@@ -274,11 +295,14 @@ jobs:
           fi
           clawhub skill publish "${{ matrix.path }}" \
             --slug "$CLAWHUB_SLUG" \
-            --name "${{ matrix.name }}" \
-            --version "${{ matrix.version }}" \
+            --name "$SKILL_NAME" \
+            --version "$SKILL_VERSION" \
             "${owner_args[@]}" \
             --changelog "自动发布 ${GITHUB_SHA::12}" \
-            --json > "$RUNNER_TEMP/clawhub-publish.json"
+            --json > "$RUNNER_TEMP/clawhub-publish-raw.json"
+          jq -e --arg slug "$CLAWHUB_SLUG" --arg version "$SKILL_VERSION" \
+            'select(type == "object" and .slug == $slug and .version == $version and (.status | type == "string")) | {status, slug, displayName, version, versionId, publicationStatus, attemptId}' \
+            "$RUNNER_TEMP/clawhub-publish-raw.json" > "$RUNNER_TEMP/clawhub-publish.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
