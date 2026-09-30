@@ -212,7 +212,7 @@ clawhub skill publish "$SKILL_PATH" \
 - 手动和 Tag 模式使用明确路径；变更自动模式使用受限检测器生成显式 matrix，不依赖平台隐式递归。
 - 优先复用目标仓库已有 artifact ledger；没有等价能力时，才复制 `assets/github-actions/` 下通用检测器、ClawHub 目标辅助脚本、SkillHub 结果投影 filter 和 workflow 模板，并配置新建/更新目标。
 - 正式 job 使用平台对应的 Secret 和 publisher 身份前置检查。是否使用 GitHub Environment 审批按该 workflow 的已确认策略配置；不要把模板要求写成现有 workflow 已有的行为。
-- ClawHub 使用 publisher+slug 作为目标身份并设置预期 `CLAWHUB_PUBLISHER`；组织发布时 `CLAWHUB_OWNER` 与其相同，个人发布留空。通用资产模板另需为每条路径配置 `new`/`update`；本仓库 workflow 以目录名生成裸 slug，并在 publisher 命名空间内 inspect/校验。Tencent SkillHub 的 slug 全局唯一，本仓库仍使用 `mc0571-<目录名>`。
+- ClawHub 使用 publisher+slug 作为目标身份并设置预期 `CLAWHUB_PUBLISHER`；组织发布时 `CLAWHUB_OWNER` 与其相同，个人发布留空。通用资产模板另需为每条路径配置 `new`/`update`；本仓库 workflow 以目录名生成裸 slug，并在 publisher 命名空间内 inspect/校验。Tencent SkillHub 按本仓库目录名先解析和发布，仅在平台明确拒绝该 slug 已被占用时才尝试 `<目录名>-mc`；身份校验和回退条件见 [GitHub Actions 发布指南](references/github-actions.md)。
 - 复制检测器时保留固定的 `PyYAML==6.0.3` 安装；双市场共享检测只校验共同版本规则，Tencent 专属顶层 `version` 交给 Tencent dry-run 阻断。
 - 同一市场 `max-parallel: 1` 并在首个失败后停止；Tencent 与 ClawHub job 相互独立。
 - 固定 CLI、reusable workflow 和 Action 版本；不使用 `@main`，不自动创建 Tag、Release、Environment、Secret 或保护规则。
