@@ -236,22 +236,24 @@ def check_historical_skill_migration(root, validate_skills, version_bump_errors,
     git(repository, "config", "user.name", "self-check")
     git(repository, "config", "user.email", "self-check@example.invalid")
     write_skill(
-        repository / "skills" / "dev" / "pmo",
-        "pmo",
+        repository / "skills" / "dev" / "legacy-skill",
+        "legacy-skill",
         version="0.12.0",
         category=None,
     )
     base = commit_all(repository, "legacy nested skill")
     previous = artifact_versions_at_ref(repository, base)
-    if previous.get("skill:pmo") != ("skills/dev/pmo", "0.12.0"):
+    if previous.get("skill:legacy-skill") != ("skills/dev/legacy-skill", "0.12.0"):
         failures.append("historical nested skill snapshot did not preserve its old path/version")
     if "category" in snapshot(repository, base)["artifacts"][0]:
         failures.append("historical nested skill snapshot inferred category from its path")
 
-    (repository / "skills" / "dev" / "pmo").rename(repository / "skills" / "pmo")
+    (repository / "skills" / "dev" / "legacy-skill").rename(
+        repository / "skills" / "legacy-skill"
+    )
     write_skill(
-        repository / "skills" / "pmo",
-        "pmo",
+        repository / "skills" / "legacy-skill",
+        "legacy-skill",
         version="0.12.0",
         category="Developer Tools",
     )
@@ -261,14 +263,14 @@ def check_historical_skill_migration(root, validate_skills, version_bump_errors,
     changed = set(git(repository, "diff", "--name-only", base, "--").splitlines())
     expect(
         version_bump_errors(current, previous, changed),
-        "skills/pmo",
+        "skills/legacy-skill",
         "[artifact-version-bump]",
         failures,
     )
 
     write_skill(
-        repository / "skills" / "pmo",
-        "pmo",
+        repository / "skills" / "legacy-skill",
+        "legacy-skill",
         version="0.13.0",
         category="Developer Tools",
     )

@@ -8,7 +8,5 @@
 ## Agent 工程资产落位
 
 - 跨 harness 通用的资产按类型放在仓库顶层；已有类型沿用 `skills/`、`plugins/` 等现有目录，新类型在加入首个实际资产时再创建目录。
-- Codex 专属分发资产放在 `harnesses/.codex/`，目录结构应尽量镜像用户级安装目标 `~/.codex/`。
-- Claude Code 专属分发资产放在 `harnesses/.claude/`，目录结构应尽量镜像用户级安装目标 `~/.claude/`。
 - 仓库根目录的 `AGENTS.md` 和 `CLAUDE.md` 仅用于维护本仓库，不作为可分发 harness 资产。
-- 不为规划预建空目录，不在多个 harness 目录复制通用资产；harness 目录只承载专属配置或必要适配。
+- 不为规划预建空目录。

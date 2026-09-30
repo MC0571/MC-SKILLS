@@ -1,4 +1,0 @@
-interface:
-  display_name: "PMO"
-  short_description: "持续负责总体目标，协调多个交付范围的依赖、归属与后继"
-  default_prompt: "使用 $pmo 持续推进单仓库总体产品目标；核验目标、已有授权和配套 Owner，一次完整委任，按真实变化协调依赖、归属与后继。"

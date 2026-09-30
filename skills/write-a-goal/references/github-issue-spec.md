@@ -65,7 +65,7 @@ Planning metadata
 应能让执行者定位事实；如果核心事实仍未知，保留缺口并标记 `planning_not_ready`，不要用
 运行态信息填空。
 
-Issue 不得把 Tasks Owner/Codex 的运行时编排或 admission 元数据写成 Issue 合同字段。禁止的
+Issue 不得把 Agent 执行环境的运行时编排或 admission 元数据写成 Issue 合同字段。禁止的
 是这类上下文中的明确键或控制块，例如 `owner_thread_id`、`task_thread_id`、
 `workspace_entry`、`owner_runtime_lock`、`contract_revision`、`contract_digest`、
 `execution_generation`、`event_key`、`execution_hold`、`<control>`，以及带有运行时命名空间的
@@ -96,8 +96,8 @@ Known constraints or dependencies: <已知项；可省略>
    条件，并检查 parent/milestone/blocked-by 是否与已知规划一致。
 3. 缺少任何核心项或 GitHub truth 不足时，输出 `planning_not_ready`、精确缺口和最小修订
    建议；不得建议 admission、派发或未经授权的 GitHub 写入。
-4. 全部核心项有证据且关系无冲突时输出 `ready`；仍只提供 Issue 产物。tasks-owner 的运行态
-   admission 合同由后续流程另行补充，不能写进 Issue。
+4. 全部核心项有证据且关系无冲突时输出 `ready`；仍只提供 Issue 产物，不因此作出运行态决策
+   或创建运行态状态。
 5. 最终做一次泄漏检查：Issue 产物不得出现 `/goal` 或 goal API 调用，也不得把运行时编排
    键/控制块写入 Issue；产品域、代码术语和验证对象中的同名词仍可保留。父 FR/milestone
    保持轻量。

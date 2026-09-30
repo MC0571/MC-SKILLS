@@ -42,13 +42,10 @@ npx skills add https://github.com/MC-and-his-Agents/MC-AGENT-KIT/tree/main/skill
 | Skill | 分类 | 版本 | 描述 |
 |---|---|---:|---|
 | [agents-md](./skills/agents-md/SKILL.md) | Developer Tools | 0.1.1 | 创建、审查、重构或更新 AGENTS.md、CLAUDE.md 等仓库指令。 |
-| [codex-like-app-design](./skills/codex-like-app-design/SKILL.md) | Developer Tools | 0.2.0 | Design, build, adapt, or review dense desktop AI workbenches using source-grounded patterns from Codex Desktop. |
 | [image-art-direction](./skills/image-art-direction/SKILL.md) | Creativity | 0.7.0 | 将人物、角色、产品、食物、建筑、室内、电影或纪实场景的静态图像需求转为连贯、可执行、可检视的视觉规格，并按需生成、编辑、评审或定向修订图像。 |
 | [multi-agent](./skills/multi-agent/SKILL.md) | Productivity | 0.2.1 | 在用户要求多 Agent 协作、委派或并行工作时，协调主 Agent 与 subagent 的职责、模型路由、交接、审查和集成；普通单 Agent 任务不因此启动委派。 |
-| [pmo](./skills/pmo/SKILL.md) | Business & Operations | 0.13.0 | 在用户委任的单一 GitHub 仓库中，持续推进多个交付单元组成的总体产品目标，处理跨单元取舍、真实依赖、归属冲突和后继。 |
-| [skill-release](./skills/skill-release/SKILL.md) | Developer Tools | 0.4.1 | 检查、预检、发布并配置手动、Tag 或按变更自动发布 Skill 到腾讯 SkillHub 或 ClawHub。 |
-| [tasks-owner](./skills/tasks-owner/SKILL.md) | Developer Tools | 0.27.0 | 在用户明确委任或有效 PMO 委派下，持续负责一个可定位交付范围的实现、验证和收口。 |
-| [write-a-goal](./skills/write-a-goal/SKILL.md) | Productivity | 0.2.1 | 起草、优化或设置符合 OpenAI《Follow a goal》指南的 Codex goal，并为 GitHub Issue 提供创建前草案、更新、修订、补全和校验。 |
+| [skill-release](./skills/skill-release/SKILL.md) | Developer Tools | 0.4.2 | 检查、预检、发布并配置手动、Tag 或按变更自动发布 Skill 到腾讯 SkillHub 或 ClawHub。 |
+| [write-a-goal](./skills/write-a-goal/SKILL.md) | Productivity | 0.2.2 | 起草、优化或设置符合 OpenAI《Follow a goal》指南的 Codex goal，并为 GitHub Issue 提供创建前草案、更新、修订、补全和校验。 |
 <!-- SKILLS_END -->
 
 ## Agent Plugins
