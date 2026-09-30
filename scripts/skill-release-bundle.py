@@ -258,7 +258,7 @@ def run_self_test() -> None:
 
     result_filter = (
         Path(__file__).resolve().parents[1]
-        / "skills/skill-release/assets/github-actions/skillhub_publish_result.jq"
+        / "skills/skill-release/assets/github-actions/skillhub_publish_result.txt"
     )
 
     def project_skillhub_result(raw: str, slug: str = "mc0571-sample") -> subprocess.CompletedProcess[str]:
@@ -438,6 +438,11 @@ def run_self_test() -> None:
             "---\nname: sample\ndescription: test\nmetadata:\n  version: 1.2.3\n---\n\n# Sample Display\n",
             encoding="utf-8",
         )
+        filter_fixture = source / "assets" / "github-actions"
+        filter_fixture.mkdir(parents=True)
+        (filter_fixture / result_filter.name).write_text(
+            result_filter.read_text(encoding="utf-8"), encoding="utf-8"
+        )
         (source / "tool.py").write_text("print('ok')\n", encoding="utf-8")
         (source / ".DS_Store").write_text("ignored\n", encoding="utf-8")
         (source / "cache.pyc").write_bytes(b"ignored")
@@ -471,7 +476,10 @@ def run_self_test() -> None:
         assert 'version: "1.2.3"' in staged_text
         assert 'displayName: "Sample Display"' in staged_text
         assert "metadata:\n  version: 1.2.3" in staged_text
-        assert result["files"] == 3 and not (tencent / "untracked.txt").exists()
+        assert result["files"] == 4 and not (tencent / "untracked.txt").exists()
+        bundled_filter = tencent / "assets/github-actions/skillhub_publish_result.txt"
+        assert bundled_filter.is_file()
+        assert not bundled_filter.with_suffix(".jq").exists()
         assert not (tencent / ".DS_Store").exists() and not (tencent / "cache.pyc").exists()
         assert not (tencent / "__pycache__").exists()
         clawhub = Path(temporary) / "clawhub"

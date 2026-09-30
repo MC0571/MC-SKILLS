@@ -2,7 +2,7 @@
 name: skill-release
 description: 检查、预检、发布并配置手动、Tag 或按变更自动发布 Skill 到腾讯 SkillHub 或 ClawHub。用户要发布或更新本地 SKILL、为扁平或一层集合目录配置 GitHub Actions、同步多个 Skill，或排查 Token、slug、版本、许可和审核状态问题时使用。
 metadata:
-  version: "0.5.1"
+  version: "0.5.2"
   category: "Developer Tools"
 ---
 
