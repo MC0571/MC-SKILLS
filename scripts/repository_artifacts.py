@@ -19,6 +19,7 @@ SEMVER_PATTERN = re.compile(
     rf"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
 CACHE_PARTS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+ZERO_SHA = "0" * 40
 
 
 @dataclass(frozen=True)
@@ -299,3 +300,86 @@ def version_bump_errors(
                 )
             )
     return errors
+
+
+def changed_skill_matrix(root: Path, base_ref: str, target_ref: str) -> tuple[dict, list[str]]:
+    """Return publishable standalone Skill changes between two Git trees.
+
+    Artifact snapshots, distributable digests and version validation all come
+    from this module so release detection follows the repository contract.
+    Plugin artifacts are intentionally excluded.
+    """
+    target_commit = resolve_commit(root, target_ref)
+    if base_ref in {"", ZERO_SHA}:
+        base_commit = None
+        before_artifacts: list[dict] = []
+    else:
+        base_commit = resolve_commit(root, base_ref)
+        before_artifacts = snapshot(root, base_commit)["artifacts"]
+    after_artifacts = snapshot(root, target_commit)["artifacts"]
+    before = {
+        f"skill:{item['name']}": item
+        for item in before_artifacts
+        if item["type"] == "skill"
+    }
+    after = {
+        f"skill:{item['name']}": item
+        for item in after_artifacts
+        if item["type"] == "skill"
+    }
+    errors: list[str] = []
+    if base_commit is None:
+        changed_paths = {entry.path for entry in tracked_tree(root, target_commit)}
+    else:
+        changed_paths = set(
+            git_bytes(root, "diff", "--name-only", "-z", base_commit, target_commit)
+            .decode("utf-8")
+            .split("\0")
+        )
+    changed_paths.discard("")
+    current_versions = {
+        identity: (item["path"], item["version"]) for identity, item in after.items()
+    }
+    previous_versions = {
+        identity: (item["path"], item["version"]) for identity, item in before.items()
+    }
+    errors.extend(version_bump_errors(current_versions, previous_versions, changed_paths))
+
+    include: list[dict[str, str]] = []
+    for identity in sorted(before.keys() - after.keys()):
+        errors.append(f"removed Skill requires manual handling: {before[identity]['path']}")
+    for identity in sorted(after.keys() - before.keys()):
+        item = after[identity]
+        if len(Path(item["path"]).parts) != 2:
+            errors.append(f"unsupported Skill path for automatic release: {item['path']}")
+            continue
+        include.append(
+            {key: item[key] for key in ("name", "path", "version")} | {"change": "added"}
+        )
+    for identity in sorted(before.keys() & after.keys()):
+        old, new = before[identity], after[identity]
+        if old["path"] != new["path"]:
+            errors.append(f"moved Skill requires manual handling: {old['path']} -> {new['path']}")
+            continue
+        if old["digest"] == new["digest"]:
+            continue
+        if len(Path(new["path"]).parts) != 2:
+            errors.append(f"unsupported Skill path for automatic release: {new['path']}")
+            continue
+        include.append(
+            {key: new[key] for key in ("name", "path", "version")} | {"change": "updated"}
+        )
+
+    include.sort(key=lambda item: item["path"])
+
+    result = {
+        "schema_version": 1,
+        "base_commit": base_commit,
+        "target_commit": target_commit,
+        "matrix": {"include": include},
+        "removed": [
+            {key: before[identity][key] for key in ("name", "version", "path", "digest")}
+            for identity in sorted(before.keys() - after.keys())
+        ],
+    }
+    return result, errors

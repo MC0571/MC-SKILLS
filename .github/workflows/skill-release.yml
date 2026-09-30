@@ -1,0 +1,559 @@
+name: Publish changed Skills
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "scripts/repository_artifacts.py"
+      - "scripts/skill-release-matrix.py"
+      - "scripts/skill-release-bundle.py"
+      - "skills/skill-release/assets/github-actions/clawhub_target.py"
+      - ".github/workflows/skill-release.yml"
+      - ".github/actionlint.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "scripts/repository_artifacts.py"
+      - "scripts/skill-release-matrix.py"
+      - "scripts/skill-release-bundle.py"
+      - "skills/skill-release/assets/github-actions/clawhub_target.py"
+      - ".github/workflows/skill-release.yml"
+      - ".github/actionlint.yaml"
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full commit SHA already present in main history
+        required: true
+        type: string
+      market:
+        description: Market to publish when retrying a failed run
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - skillhub
+          - clawhub
+      skill_name:
+        description: Optional Skill name to retry; empty selects every changed Skill
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  SKILLHUB_HOST: https://api.skillhub.cn
+  SKILLHUB_CLI_URL: https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/skillhub-cli-2026.8.5.tar.gz
+  SKILLHUB_CLI_SHA256: 3bbe2ba15ada2eb7a94a2b760fead83be5f4164ab28a6c8b0944dbc539f7e236
+  SKILLHUB_SKIP_SELF_UPGRADE: "1"
+  SKILLHUB_SKIP_WORKSPACE_SKILLS: "1"
+  CLAWHUB_VERSION: "0.23.3"
+  CLAWHUB_PUBLISHER: ${{ vars.CLAWHUB_PUBLISHER }}
+  CLAWHUB_OWNER: ${{ vars.CLAWHUB_OWNER }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      base_sha: ${{ steps.refs.outputs.base_sha }}
+      target_sha: ${{ steps.refs.outputs.target_sha }}
+      matrix: ${{ steps.changed.outputs.matrix }}
+      has_changes: ${{ steps.changed.outputs.has_changes }}
+      count: ${{ steps.changed.outputs.count }}
+      market: ${{ steps.changed.outputs.market }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'workflow_dispatch' && inputs.commit_sha || github.sha }}
+          fetch-depth: 0
+      - name: Resolve exact comparison commits
+        id: refs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_TARGET_SHA: ${{ github.sha }}
+          INPUT_COMMIT_SHA: ${{ inputs.commit_sha }}
+          EVENT_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)
+              target="$PR_HEAD_SHA"
+              base="$(git merge-base "$PR_BASE_SHA" "$target")"
+              ;;
+            push)
+              target="$PUSH_TARGET_SHA"
+              base="$PUSH_BEFORE_SHA"
+              ;;
+            workflow_dispatch)
+              if [[ "$EVENT_REF" != "refs/heads/main" ]]; then
+                echo "workflow_dispatch must run from refs/heads/main" >&2
+                exit 1
+              fi
+              target="$INPUT_COMMIT_SHA"
+              if [[ ! "$target" =~ ^[0-9a-fA-F]{40}$ ]]; then
+                echo "commit_sha must be a full 40-character SHA" >&2
+                exit 1
+              fi
+              git fetch origin main
+              if ! git merge-base --is-ancestor "$target" origin/main; then
+                echo "commit_sha must be present in main history" >&2
+                exit 1
+              fi
+              base="$(git rev-parse "$target^")"
+              ;;
+            *)
+              echo "unsupported event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+          printf 'base_sha=%s\n' "$base" >> "$GITHUB_OUTPUT"
+          printf 'target_sha=%s\n' "$target" >> "$GITHUB_OUTPUT"
+      - name: Validate the exact target repository contracts
+        env:
+          BASE_SHA: ${{ steps.refs.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            python3 scripts/validate-repository.py
+          else
+            python3 scripts/validate-repository.py --base-ref "$BASE_SHA"
+          fi
+      - name: Build release matrix from repository artifact snapshots
+        id: changed
+        env:
+          BASE_SHA: ${{ steps.refs.outputs.base_sha }}
+          TARGET_SHA: ${{ steps.refs.outputs.target_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_MARKET: ${{ inputs.market }}
+          INPUT_SKILL_NAME: ${{ inputs.skill_name }}
+        run: |
+          set -euo pipefail
+          selected_name="$INPUT_SKILL_NAME"
+          if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then
+            selected_name=""
+          fi
+          python3 scripts/skill-release-matrix.py \
+            --base "$BASE_SHA" \
+            --target "$TARGET_SHA" \
+            --skill-name "$selected_name" \
+            > "$RUNNER_TEMP/full-changed-skills.json"
+          python3 - "$RUNNER_TEMP/full-changed-skills.json" "$RUNNER_TEMP/changed-skills.json" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          result = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          include = result["matrix"]["include"]
+          matrix = json.dumps(result["matrix"], separators=(",", ":"))
+          market = os.environ.get("INPUT_MARKET", "") if os.environ.get("EVENT_NAME") == "workflow_dispatch" else "both"
+          if market not in {"both", "skillhub", "clawhub"}:
+              raise SystemExit("market must be both, skillhub, or clawhub")
+          with open(sys.argv[3], "a", encoding="utf-8") as output:
+              output.write(f"matrix={matrix}\n")
+              output.write(f"has_changes={'true' if include else 'false'}\n")
+              output.write(f"count={len(include)}\n")
+              output.write(f"market={market}\n")
+          Path(sys.argv[2]).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+          cat "$RUNNER_TEMP/changed-skills.json" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: changed-skills-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/changed-skills.json
+          if-no-files-found: ignore
+
+  tencent_dry_run:
+    needs: detect
+    if: needs.detect.outputs.has_changes == 'true' && (needs.detect.outputs.market == 'both' || needs.detect.outputs.market == 'skillhub')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.detect.outputs.target_sha }}
+      - name: Stage tracked Tencent SkillHub bundle
+        id: bundle
+        env:
+          TARGET_SHA: ${{ needs.detect.outputs.target_sha }}
+          SKILL_PATH: ${{ matrix.path }}
+          SKILL_NAME: ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/skill-release-bundle.py \
+            --ref "$TARGET_SHA" \
+            --path "$SKILL_PATH" \
+            --market skillhub \
+            --destination "$RUNNER_TEMP/bundle/$SKILL_NAME" \
+            --github-output "$GITHUB_OUTPUT"
+      - name: Install pinned SkillHub CLI
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/skillhub-cli.tar.gz"
+          curl --fail --silent --show-error --location \
+            "$SKILLHUB_CLI_URL" \
+            --output "$archive"
+          echo "$SKILLHUB_CLI_SHA256  $archive" | sha256sum --check --status
+          mkdir -p "$RUNNER_TEMP/skillhub-cli"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/skillhub-cli"
+          test -f "$RUNNER_TEMP/skillhub-cli/cli/skills_store_cli.py"
+      - name: Dry-run Tencent SkillHub
+        env:
+          SKILL_NAME: ${{ matrix.name }}
+          SKILL_VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/skillhub-cli/cli/skills_store_cli.py" --version
+          python3 "$RUNNER_TEMP/skillhub-cli/cli/skills_store_cli.py" publish \
+            "$RUNNER_TEMP/bundle/$SKILL_NAME" \
+            --host "$SKILLHUB_HOST" \
+            --dry-run \
+            --json > "$RUNNER_TEMP/tencent-dry-run.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: tencent-dry-run-${{ matrix.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/tencent-dry-run.json
+          if-no-files-found: ignore
+
+  clawhub_dry_run:
+    needs: detect
+    if: needs.detect.outputs.has_changes == 'true' && (needs.detect.outputs.market == 'both' || needs.detect.outputs.market == 'clawhub')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.detect.outputs.target_sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Install pinned ClawHub CLI
+        run: npm install --global "clawhub@$CLAWHUB_VERSION"
+      - name: Stage tracked ClawHub bundle
+        id: bundle
+        env:
+          TARGET_SHA: ${{ needs.detect.outputs.target_sha }}
+          SKILL_PATH: ${{ matrix.path }}
+          SKILL_NAME: ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/skill-release-bundle.py \
+            --ref "$TARGET_SHA" \
+            --path "$SKILL_PATH" \
+            --market clawhub \
+            --destination "$RUNNER_TEMP/bundle/$SKILL_NAME" \
+            --github-output "$GITHUB_OUTPUT"
+      - name: Dry-run ClawHub
+        env:
+          SKILL_NAME: ${{ matrix.name }}
+          SKILL_VERSION: ${{ matrix.version }}
+          BUNDLE_DIR: ${{ runner.temp }}/bundle/${{ matrix.name }}
+          BUNDLE_NAME: ${{ steps.bundle.outputs.displayName }}
+          EXPECTED_PUBLISHER: ${{ vars.CLAWHUB_PUBLISHER }}
+          TARGET_OWNER: ${{ vars.CLAWHUB_OWNER }}
+        run: |
+          set -euo pipefail
+          owner_args=()
+          if [[ -n "$TARGET_OWNER" ]]; then
+            owner_args=(--owner "$TARGET_OWNER")
+          elif [[ -n "$EXPECTED_PUBLISHER" ]]; then
+            owner_args=(--owner "$EXPECTED_PUBLISHER")
+          fi
+          clawhub --cli-version
+          clawhub skill publish "$BUNDLE_DIR" \
+            --slug "mc0571-$SKILL_NAME" \
+            --name "$BUNDLE_NAME" \
+            --version "$SKILL_VERSION" \
+            "${owner_args[@]}" \
+            --dry-run \
+            --json > "$RUNNER_TEMP/clawhub-dry-run.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: clawhub-dry-run-${{ matrix.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/clawhub-dry-run.json
+          if-no-files-found: ignore
+
+  tencent_publish:
+    needs:
+      - detect
+      - tencent_dry_run
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.detect.outputs.has_changes == 'true' && needs.detect.outputs.market != 'clawhub' && needs.tencent_dry_run.result == 'success' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: skill-release-skillhub-${{ github.repository }}
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.detect.outputs.target_sha }}
+          fetch-depth: 0
+      - name: Fetch current main for release ordering
+        run: git fetch --no-tags origin main
+      - name: Install pinned SkillHub CLI
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/skillhub-cli.tar.gz"
+          curl --fail --silent --show-error --location \
+            "$SKILLHUB_CLI_URL" \
+            --output "$archive"
+          echo "$SKILLHUB_CLI_SHA256  $archive" | sha256sum --check --status
+          mkdir -p "$RUNNER_TEMP/skillhub-cli"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/skillhub-cli"
+          test -f "$RUNNER_TEMP/skillhub-cli/cli/skills_store_cli.py"
+      - name: Publish changed Skills to SkillHub
+        env:
+          SKILLHUB_KEY: ${{ secrets.SKILLHUB_KEY }}
+          EXPECTED_PUBLISHER: ${{ vars.SKILLHUB_PUBLISHER }}
+          TARGET_SHA: ${{ needs.detect.outputs.target_sha }}
+          RELEASE_MATRIX: ${{ needs.detect.outputs.matrix }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          test -n "$SKILLHUB_KEY"
+          test -n "$EXPECTED_PUBLISHER"
+          cli="$RUNNER_TEMP/skillhub-cli/cli/skills_store_cli.py"
+          python3 "$cli" login --key "$SKILLHUB_KEY" --host "$SKILLHUB_HOST"
+          python3 "$cli" auth whoami --json > "$RUNNER_TEMP/skillhub-whoami.json"
+          python3 - "$RUNNER_TEMP/skillhub-whoami.json" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          user = payload.get("user") if isinstance(payload, dict) else None
+          handle = user.get("handle") if isinstance(user, dict) else None
+          expected = os.environ.get("EXPECTED_PUBLISHER", "")
+          if not isinstance(handle, str) or not expected or handle.casefold() != expected.casefold():
+              raise SystemExit("SkillHub token handle does not match vars.SKILLHUB_PUBLISHER")
+          PY
+          mkdir -p "$RUNNER_TEMP/tencent-results"
+          while IFS= read -r item; do
+            name="$(jq -r '.name' <<< "$item")"
+            path="$(jq -r '.path' <<< "$item")"
+            version="$(jq -r '.version' <<< "$item")"
+            bundle="$RUNNER_TEMP/bundle/$name"
+            bundle_json="$(python3 scripts/skill-release-bundle.py \
+              --ref "$TARGET_SHA" --path "$path" --market skillhub --destination "$bundle")"
+            slug="$(jq -r '.slug' <<< "$bundle_json")"
+            main_state="$(python3 scripts/skill-release-bundle.py \
+              --ref origin/main --path "$path" --version "$version" --check-current-skill)"
+            if [[ "$(jq -r '.status' <<< "$main_state")" == "superseded" ]]; then
+              main_version="$(jq -r '.mainVersion' <<< "$main_state")"
+              printf -- '- SkillHub %s %s was superseded by origin/main %s; this queued target was skipped.\n' \
+                "$name" "$version" "$main_version" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            public_state="$RUNNER_TEMP/skillhub-public-$name.json"
+            rm -f "$public_state"
+            python3 - "$slug" "$public_state" "$GITHUB_STEP_SUMMARY" <<'PY'
+          import os
+          import subprocess
+          import sys
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          slug = sys.argv[1]
+          url = f"{os.environ['SKILLHUB_HOST'].rstrip('/')}/api/v1/skills/{slug}"
+          try:
+              with urllib.request.urlopen(url, timeout=20) as response:
+                  body = response.read()
+          except urllib.error.HTTPError as error:
+              if error.code == 404:
+                  decision = subprocess.run(
+                      [
+                          sys.executable,
+                          "scripts/skill-release-bundle.py",
+                          "--check-skillhub-404",
+                          "--event-name",
+                          os.environ.get("EVENT_NAME", ""),
+                          "--run-attempt",
+                          os.environ.get("RUN_ATTEMPT", ""),
+                      ],
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.PIPE,
+                      text=True,
+                  )
+                  if decision.returncode:
+                      raise SystemExit("SkillHub public status is not verifiable on dispatch or rerun; check the account page for a pending or submitted version before retrying")
+                  with open(sys.argv[3], "a", encoding="utf-8") as summary:
+                      summary.write(f"- SkillHub public status for `{slug}` was not verified on the initial push (404 is not proof of absence); the authorized publish API will decide whether creation or update is allowed.\n")
+                  raise SystemExit(0)
+              raise SystemExit(f"SkillHub public version check failed with HTTP {error.code}")
+          except (urllib.error.URLError, TimeoutError) as error:
+              raise SystemExit(f"SkillHub public version check failed: {type(error).__name__}")
+          Path(sys.argv[2]).write_bytes(body)
+          PY
+            if [[ -f "$public_state" ]]; then
+              python3 scripts/skill-release-bundle.py \
+                --validate-skillhub-public "$public_state" \
+                --publisher "$EXPECTED_PUBLISHER" \
+                --version "$version"
+            fi
+            raw_result="$RUNNER_TEMP/skillhub-publish-$name.json"
+            python3 "$cli" publish "$bundle" \
+              --host "$SKILLHUB_HOST" \
+              --changelog "自动发布 ${TARGET_SHA:0:12}" \
+              --json > "$raw_result"
+            jq -e --arg name "$name" --arg slug "$slug" --arg version "$version" '
+              select(type == "object" and has("skillId") and has("status") and (.status | type == "string")) |
+              {name: $name, slug: $slug, version: $version, skillId, status, publicUrl}
+            ' "$raw_result" > "$RUNNER_TEMP/tencent-results/$name.json"
+          done < <(jq -c '.include[]' <<< "$RELEASE_MATRIX")
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: tencent-publish-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/tencent-results/*.json
+          if-no-files-found: ignore
+
+  clawhub_publish:
+    needs:
+      - detect
+      - clawhub_dry_run
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.detect.outputs.has_changes == 'true' && needs.detect.outputs.market != 'skillhub' && needs.clawhub_dry_run.result == 'success' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: skill-release-clawhub-${{ github.repository }}
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          ref: ${{ needs.detect.outputs.target_sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Install pinned ClawHub CLI
+        run: npm install --global "clawhub@$CLAWHUB_VERSION"
+      - name: Publish changed Skills to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+          TARGET_SHA: ${{ needs.detect.outputs.target_sha }}
+          RELEASE_MATRIX: ${{ needs.detect.outputs.matrix }}
+          EXPECTED_PUBLISHER: ${{ vars.CLAWHUB_PUBLISHER }}
+          TARGET_OWNER: ${{ vars.CLAWHUB_OWNER }}
+        run: |
+          set -euo pipefail
+          test -n "$CLAWHUB_TOKEN"
+          test -n "$EXPECTED_PUBLISHER"
+          clawhub login --token "$CLAWHUB_TOKEN"
+          python3 skills/skill-release/assets/github-actions/clawhub_target.py \
+            --publisher "$EXPECTED_PUBLISHER" \
+            --owner "$TARGET_OWNER" \
+            --verify-identity
+          mkdir -p "$RUNNER_TEMP/clawhub-results"
+          while IFS= read -r item; do
+            name="$(jq -r '.name' <<< "$item")"
+            path="$(jq -r '.path' <<< "$item")"
+            version="$(jq -r '.version' <<< "$item")"
+            bundle="$RUNNER_TEMP/bundle/$name"
+            bundle_json="$(python3 scripts/skill-release-bundle.py \
+              --ref "$TARGET_SHA" --path "$path" --market clawhub --destination "$bundle")"
+            slug="mc0571-$name"
+            display_name="$(jq -r '.displayName' <<< "$bundle_json")"
+            target_json="$(python3 skills/skill-release/assets/github-actions/clawhub_target.py \
+              --path "$path" --publisher "$EXPECTED_PUBLISHER" --owner "$TARGET_OWNER" \
+              --auto-prefix mc0571-)"
+            slug="$(jq -r '.slug' <<< "$target_json")"
+            scoped_target="@$EXPECTED_PUBLISHER/$slug"
+            inspect_status=0
+            clawhub inspect "$scoped_target" --json \
+              > "$RUNNER_TEMP/clawhub-inspect.json" \
+              2> "$RUNNER_TEMP/clawhub-inspect.err" || inspect_status=$?
+            inspection="$(python3 skills/skill-release/assets/github-actions/clawhub_target.py \
+              --path "$path" --publisher "$EXPECTED_PUBLISHER" --owner "$TARGET_OWNER" \
+              --auto-prefix mc0571- \
+              --inspect-json "$RUNNER_TEMP/clawhub-inspect.json" \
+              --inspect-error "$RUNNER_TEMP/clawhub-inspect.err" \
+              --inspect-status "$inspect_status" --allow-atomic-create)"
+            mode="$(jq -r '.mode' <<< "$inspection")"
+            if [[ "$mode" == "unverified" ]]; then
+              echo "ClawHub target status for @$EXPECTED_PUBLISHER/$slug was not verified; the publisher-scoped publish API will enforce ownership atomically." >> "$GITHUB_STEP_SUMMARY"
+            else
+              python3 - "$RUNNER_TEMP/clawhub-inspect.json" "$version" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          from repository_artifacts import SEMVER_PATTERN, semver_key
+          result = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          latest = result.get("latestVersion")
+          if isinstance(latest, dict):
+              latest = latest.get("version")
+          if latest:
+              if not isinstance(latest, str) or not SEMVER_PATTERN.fullmatch(latest):
+                  raise SystemExit("ClawHub returned an invalid latestVersion")
+              if semver_key(sys.argv[2]) <= semver_key(latest):
+                  raise SystemExit(f"local version {sys.argv[2]} is not above ClawHub latest {latest}")
+          PY
+            fi
+            owner_args=()
+            if [[ -n "$TARGET_OWNER" ]]; then
+              owner_args=(--owner "$TARGET_OWNER")
+            fi
+            raw_result="$RUNNER_TEMP/clawhub-publish-$name.json"
+            clawhub skill publish "$bundle" \
+              --slug "$slug" \
+              --name "$display_name" \
+              --version "$version" \
+              "${owner_args[@]}" \
+              --changelog "自动发布 ${TARGET_SHA:0:12}" \
+              --json > "$raw_result"
+            jq -e --arg slug "$slug" --arg version "$version" '
+              select(type == "object" and .slug == $slug and .version == $version and (.status | type == "string")) |
+              {status, slug, displayName, version, versionId, publicationStatus, attemptId}
+            ' "$raw_result" > "$RUNNER_TEMP/clawhub-results/$name.json"
+          done < <(jq -c '.include[]' <<< "$RELEASE_MATRIX")
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: clawhub-publish-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/clawhub-results/*.json
+          if-no-files-found: ignore
+
+  report:
+    if: always()
+    needs:
+      - detect
+      - tencent_dry_run
+      - clawhub_dry_run
+      - tencent_publish
+      - clawhub_publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize publication result
+        env:
+          CHANGED: ${{ needs.detect.outputs.count || '0' }}
+          TENCENT_DRY_RUN: ${{ needs.tencent_dry_run.result }}
+          CLAWHUB_DRY_RUN: ${{ needs.clawhub_dry_run.result }}
+          TENCENT_PUBLISH: ${{ needs.tencent_publish.result }}
+          CLAWHUB_PUBLISH: ${{ needs.clawhub_publish.result }}
+        run: |
+          {
+            echo "## Skill release"
+            echo
+            echo "- Changed Skills: $CHANGED"
+            echo "- SkillHub dry-run: $TENCENT_DRY_RUN"
+            echo "- ClawHub dry-run: $CLAWHUB_DRY_RUN"
+            echo "- SkillHub publish: $TENCENT_PUBLISH"
+            echo "- ClawHub publish: $CLAWHUB_PUBLISH"
+          } >> "$GITHUB_STEP_SUMMARY"

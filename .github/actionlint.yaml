@@ -1,0 +1,6 @@
+paths:
+  .github/workflows/skill-release.yml:
+    ignore:
+      # GitHub's native queue: max is newer than actionlint's concurrency schema.
+      # See https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+      - 'unexpected key "queue" for "concurrency" section'

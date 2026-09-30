@@ -49,6 +49,8 @@ unset SKILLHUB_KEY
 2. `Secret` 粘贴刚复制的 Token。
 3. 点击 `Add secret`，看到列表中出现 `SKILLHUB_KEY` 后再继续配置 workflow。
 
+本仓库 workflow 还需要 Actions Repository Variable `SKILLHUB_PUBLISHER`，用于核对 Token 所属 handle。该值是非敏感发布者名称，不要放入 Secret。
+
 提醒用户不要把 Token 写进 workflow YAML，也不要发送包含完整 Token 的截图。
 
 团队发布使用团队身份：
@@ -83,7 +85,9 @@ skillhub publish <skill-path> --host "https://api.skillhub.cn"
 
 发布更新时保持 `slug` 不变，递增 `version` 并提供 changelog。当前 CLI 不会自动上传 Skill 头像；没有 `iconUrl` 时可能使用默认占位图。
 
-集合仓库的自动发布不能把本仓库自定义的 `metadata.version` 当作 SkillHub 版本。每个 Tencent 目标仍须声明顶层 `version`；如果仓库同时维护 `metadata.version`，自动流程应校验两者相同，再把该版本用于其他市场。
+通用集合仓库应从明确选定的版本源生成 SkillHub 顶层 `version`，避免维护两份版本。本仓库以 `metadata.version` 为版本源，发布 bundle 临时生成顶层 `version`、由目录名生成 `slug`、由 `SKILL.md` 首个 H1 生成 `displayName`；这些发布字段不复制到源 Skill。
+
+本仓库 CI 会验证 `skillhub auth whoami` 返回的 handle 与 Actions Repository Variable `SKILLHUB_PUBLISHER` 一致，再执行发布。公共 SkillHub API 只显示已经公开的版本；查询不到某版本不能证明它没有处于安全扫描或审核中，也不能据此推断审核结果。仅原始 `main` push 的首次运行可在 404 时继续交由正式发布 API 判定创建或更新；dispatch 和 rerun 遇到 404 必须停止并先到个人中心核实状态。
 
 ## CLI 安装
 

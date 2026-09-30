@@ -2,6 +2,8 @@
 
 仅在用户明确要求配置 CI/CD 时读取。先确认发布模式、平台、Skill 根目录、版本来源、发布者、审批策略和失败策略；优先复用目标仓库已有的 artifact 清单或 workflow。
 
+本文的模式、YAML 示例、资产复制与 Environment 步骤说明可复用模板。已配置仓库的行为请看其实际 workflow；MC-SKILLS 当前实现单列于下文。
+
 ## 目录
 
 [模式选择](#模式选择) · [共同安全规则](#共同安全规则) · [手动发布](#手动发布) · [Tag 发布](#tag-发布) · [变更自动发布](#变更自动发布) · [非技术用户配置](#非技术用户配置)
@@ -14,14 +16,14 @@
 | Tag 发布 | 受保护版本 Tag | 配置时确认 Tag 规则，推送 Tag 即授权 |
 | 变更自动发布 | PR dry-run；`main` push 发布 | 配置时确认持久范围，默认再经过 Environment 审批 |
 
-配置前逐项向用户复述并确认：目标平台、Skill 根目录、监听分支或 Tag、发布者、统一版本字段、是否保留人工审批，以及两个市场独立失败的行为。完全无人值守不是默认值；只有用户明确选择后才移除 Environment 审批。
+配置前逐项向用户复述并确认：目标平台、Skill 根目录、监听分支或 Tag、发布者、统一版本字段、是否保留人工审批，以及两个市场独立失败的行为。通用变更自动发布模板默认经过 Environment 审批；已配置 workflow 则以其持久授权和真实审批配置为准。
 
 ## 共同安全规则
 
 - PR 只执行本地检查和 dry-run，不读取发布 Secret。
 - 正式发布只处理用户确认的明确路径或检测器生成的受限路径。
 - Tencent 只读取 `SKILLHUB_KEY`；ClawHub 只读取 `CLAWHUB_TOKEN`。
-- 正式 job 先执行 `whoami`；认证失败或账号不符立即停止。
+- 正式 job 先执行 `whoami` 并核验预期 publisher；认证失败或账号不符立即停止。
 - 不自动创建 Secret、Environment、Tag、Release、保护规则或下架请求。
 - CLI、reusable workflow 和第三方 Action 使用前重新核验版本；正式发布固定到稳定版本或完整 commit SHA，不使用 `@main`。
 - 两个平台使用独立 job 和结果；一方失败不推断另一方失败或成功。
@@ -153,7 +155,7 @@ env:
     {"skills/my-skill":{"slug":"my-unique-skill","mode":"new"},"skills/dev/nested-skill":{"slug":"nested-skill","mode":"update"}}
 ```
 
-每个进入 ClawHub matrix 的路径都必须有配置。`new` 要求远端查不到该 slug；`update` 要求条目存在且 owner 等于 `CLAWHUB_PUBLISHER`。目录名、Skill 内部 `name` 和远端 slug 是三个独立字段，不得互相推断。
+每个进入 ClawHub matrix 的路径都必须有配置。ClawHub 身份是 publisher+slug；查询使用 scoped slug `@<publisher>/<slug>`，另一个 publisher 下的同名 slug 不构成本目标的冲突。`new` 表示向当前 publisher 命名空间创建目标，`update` 表示更新该 publisher 的现有目标。`inspect` 返回 404 不足以证明不存在；经验证的 publisher 可依赖正式发布服务端按 publisher+slug 原子检查创建或更新。若 `inspect` 成功，`update` 必须确认条目属于 `CLAWHUB_PUBLISHER`。目录名、Skill 内部 `name` 和远端 slug 是三个独立字段，不得互相推断。
 
 检测器仅接受 Git 已跟踪的普通文件，并支持：
 
@@ -177,13 +179,22 @@ python3 .github/scripts/detect_changed_skills.py \
 - PR：检测并分别执行两个市场 dry-run，不读取 Secret。
 - `main` push：重新检测和 dry-run；正式 job 等待 `skill-release-production` Environment 审批。
 - 同一市场按确定性路径顺序、`max-parallel: 1` 发布并在首个失败后停止；两个市场互不依赖。
-- ClawHub 在 dry-run 和正式发布前都执行 `inspect`：`new` 遇到已存在 slug 时停止；`update` 的远端 owner 不匹配时按 slug 冲突停止，不能靠提升版本绕过。
-- 归属通过后才读取 dry-run 的 `latestVersion`；更新版本必须严格更高。相等或更低时停止，不覆盖默认 `latest`。
+- ClawHub 在 dry-run 和正式发布前都按 `@<publisher>/<slug>` 执行 `inspect`；若成功，更新必须确认 publisher 匹配。更新版本必须严格高于目标 publisher 条目的公开 `latestVersion`。
 - `CLAWHUB_OWNER` 在 dry-run 与正式发布中保持一致；空值表示个人 publisher，非空时必须与 `CLAWHUB_PUBLISHER` 相同。
 - 每个 Skill/平台使用唯一 artifact 名称，只保存结构化结果，不上传 Token 或完整调试日志。
 - 删除或移动只报告，不调用删除、转移或发布接口。
 
 若目标仓库已有等价 artifact ledger，复用它输出相同 matrix，不复制检测器或维护第二份版本规则。
+
+### MC-SKILLS 当前 workflow
+
+本仓库 `.github/workflows/skill-release.yml` 使用 repository artifact ledger 和 `scripts/`，仅发布 `skills/<skill>` 下的独立 Skill。PR 执行检测与 dry-run；监听到 `main` 上分发文件有变化时，发布新增或版本递增的 Skill。文件变化但版本未递增会阻断发布；不变的 Skill 跳过，删除或移动报错；不会回填历史资产。CI 使用 `metadata.version` 作为两平台共同版本源，SkillHub 的 `slug`、顶层 `version` 和 `displayName` 在临时 bundle 生成，不重复保存在 Skill 源目录。Tencent 发布前会查询公开条目：若能看到条目，需确认 owner 与预期发布者一致，且本地版本高于公开 latest。公开 API 不会显示安全扫描或审核中的版本，因此 404 不能证明该版本尚未提交或已通过审核；只有原始 `main` push 的首次运行可在状态未验证时继续交给授权发布 API 判定创建或更新，dispatch 或重跑遇到 404 会停止，先到个人中心核实状态后再重试。
+
+此 workflow 没有 GitHub Environment 审批；`main` push 是配置的持续发布授权范围。发布 job 分别使用 Tencent SkillHub 与 ClawHub，ClawHub slug 使用 `mc0571-` 前缀。
+
+在 Actions Repository Variables 中配置：`SKILLHUB_PUBLISHER`（预期 Tencent handle）、`CLAWHUB_PUBLISHER`（预期 ClawHub publisher）和 `CLAWHUB_OWNER`（个人发布留空，组织发布填写与 publisher 相同的 handle）。在 Repository Secrets 中配置 `SKILLHUB_KEY` 和 `CLAWHUB_TOKEN`。
+
+失败后从 `workflow_dispatch` 选择 `commit_sha`、`market`，并可填写 `skill_name`。SHA 必须是 `main` 历史中的完整 40 位 commit；工作流只允许从 `main` 调度，并比较目标 commit 与其父提交。`market` 可选 `both`、`skillhub` 或 `clawhub`；填写的 Skill 名须在检测出的变化矩阵中，留空时选择该 commit 的所有变更 Skill。Tencent 重试或手动 rerun 时若公开检查返回 404，必须停下并先人工核实个人中心，不能盲目重发。腾讯正式发布前还会将目标版本与 `origin/main` 上同一 Skill 的当前版本比较；若目标已被较高版本取代，记录 `superseded` 并跳过，Skill 已不存在时不发布。取消 workflow 会停止正式发布；最终报告 job 仍会执行。
 
 ## 非技术用户配置
 
@@ -194,7 +205,7 @@ python3 .github/scripts/detect_changed_skills.py \
 1. `CLAWHUB_PUBLISHER` 填网页显示的个人或组织 handle，不填显示名称。
 2. 个人发布把 `CLAWHUB_OWNER` 留空；组织发布填写与 `CLAWHUB_PUBLISHER` 相同的 handle。
 3. 在 `CLAWHUB_TARGETS_JSON` 中为每个 Skill 路径填写一个不会混淆的 slug，并选择 `new` 或 `update`。
-4. 首次开 PR 后查看 `Verify ClawHub slug ownership`：出现其他 owner 时返回第 3 步换 slug，不要提高版本号。
+4. 首次开 PR 后检查 scoped target `@<publisher>/<slug>`。若能查看到条目，更新目标的 publisher 必须匹配；若返回 404，状态仍未验证，正式发布 API 会按 publisher+slug 执行原子所有权检查。其他 publisher 下的同名 slug 本身不是冲突。
 
 ### 创建审批 Environment
 

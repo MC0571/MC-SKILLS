@@ -2,7 +2,7 @@
 name: skill-release
 description: 检查、预检、发布并配置手动、Tag 或按变更自动发布 Skill 到腾讯 SkillHub 或 ClawHub。用户要发布或更新本地 SKILL、为扁平或一层集合目录配置 GitHub Actions、同步多个 Skill，或排查 Token、slug、版本、许可和审核状态问题时使用。
 metadata:
-  version: "0.4.2"
+  version: "0.5.0"
   category: "Developer Tools"
 ---
 
@@ -19,13 +19,13 @@ metadata:
 
 ## 选择发布模式
 
-配置或执行前让用户确认一种模式：
+配置或执行前确认一种模式：
 
 - **手动发布（默认）**：用户每次指定 Skill、平台和版本，正式调用前确认。
 - **Tag 发布**：用户确认受保护 Tag 规则和固定 Skill 路径；推送匹配 Tag 即授权该次发布。
-- **变更自动发布**：PR 自动检测并 dry-run；合并到用户确认的分支后重新检测，默认经过 GitHub Environment 审批再发布。
+- **变更自动发布**：PR 自动检测并 dry-run；合并到已确认的分支后重新检测，再按已授权的平台和失败策略发布。
 
-选择变更自动发布时，一次性确认目标平台、Skill 根目录、监听分支、发布者、统一版本来源、审批策略和失败策略。配置成功表示用户对该范围内未来运行作出持久授权；完全无人值守只有用户明确选择时才启用。具体模板与非技术用户配置步骤见 [GitHub Actions 发布指南](references/github-actions.md)。
+选择变更自动发布时，一次性确认目标平台、Skill 根目录、监听分支、发布者、统一版本来源、审批策略和失败策略。配置成功表示用户对该范围内未来运行作出持久授权。模板示例默认设置 GitHub Environment 审批；已有仓库的实际 workflow 应按其明确授权合同说明，不能假定 Environment 存在。具体模板与非技术用户配置步骤见 [GitHub Actions 发布指南](references/github-actions.md)。
 
 ## 选择发布平台
 
@@ -63,7 +63,7 @@ metadata:
 - 本地 lint、test、打包或仓库自带校验（如有）先通过。
 - 目录大小与隐藏文件由目标平台规则检查；不要把 `.git`、缓存或临时文件当成发布内容。
 
-Tencent SkillHub 发布目标至少要有：
+独立手动发布到 Tencent SkillHub 时，目标至少要有：
 
 - `slug`：kebab-case，长度 2–128，且在 SkillHub 上全局唯一。
 - `version`：合法 SemVer，例如 `1.0.0`。
@@ -71,7 +71,9 @@ Tencent SkillHub 发布目标至少要有：
 
 ClawHub Skill 至少要有 `SKILL.md`；推荐 `name` 与父目录一致、使用小写字母/数字/连字符，`description` 作为目录摘要，并声明实际需要的环境变量、命令和权限。发布时必须显式确认 slug，不能把目录名或内部 `name` 自动当成远端条目身份。
 
-CI/CD 使用统一显式 SemVer：Tencent 读取顶层 `version`，ClawHub 用 `--version` 传入同一值。仓库同时维护 `metadata.version` 时，两处必须相同；内容变化但版本未递增时停止。ClawHub-only 的手动发布可使用平台自动 patch，但不能把这种行为带入已选择统一版本的自动流程。
+CI/CD 使用统一显式 SemVer：本仓库 `metadata.version` 是版本源，两个平台收到同一版本；分发文件变化而版本未递增时停止。ClawHub-only 的手动发布可使用平台自动 patch，但不能把这种行为带入已选择统一版本的自动流程。
+
+本仓库 CI 在临时发布 bundle 中由目录名生成 SkillHub `slug`、由 `metadata.version` 生成顶层 `version`、由 `SKILL.md` 首个 H1 生成 `displayName`；不要把这些派生字段复制到源 Skill。
 
 不要把本仓库 Codex Skill 的 `name`/`description` 元数据误当成 Tencent SkillHub 的 `slug`/`displayName`；ClawHub 则应保留合法的 `name`/`description`，再用 CLI 参数覆盖展示名或 slug。发现必填项、版本、slug、许可或安全问题时停止，不调用正式发布接口。
 
@@ -161,7 +163,7 @@ clawhub skill publish "$SKILL_PATH" --dry-run --json
 
 如果当前 CLI 只有旧别名，才兼容 `clawhub publish "$SKILL_PATH" --dry-run`。ClawHub dry-run 不上传内容；它会解析本地 bundle，并在 JSON 可用时输出机器可读结果。需要发布多个目录且用户明确授权批量同步时，才考虑：
 
-先执行 `clawhub inspect "$CLAWHUB_SLUG" --json`。更新模式要求条目存在且远端 owner 与预期 publisher 一致；新建模式要求条目不存在。owner 不符是 slug 冲突，必须换 slug，不能通过提高本地版本解决。只有归属校验通过后，才读取 dry-run JSON 的 `latestVersion`：更新时本地版本必须严格更高，相等或更低立即停止。
+先按预期 publisher 作用域检查 `clawhub inspect "@$CLAWHUB_PUBLISHER/$CLAWHUB_SLUG" --json`。更新时远端条目必须属于预期 publisher；其他 publisher 下的同名 slug 是独立命名空间，不构成本目标的冲突。inspect 返回 404 本身不能证明目标不存在；只有经验证的 publisher 才能依赖服务端正式发布时按 publisher+slug 原子检查创建或更新。归属校验通过后，更新版本须高于该 publisher 条目的公开最新版本。
 
 ```bash
 clawhub sync --root "$SKILLS_ROOT" --all --dry-run --json
@@ -204,16 +206,17 @@ clawhub skill publish "$SKILL_PATH" \
 
 ## CI/CD
 
-只有用户要求自动化或持续交付时才修改 CI 配置。读取 [GitHub Actions 发布指南](references/github-actions.md)，按已确认模式裁剪模板，并遵守：
+只有用户要求自动化或持续交付时才修改 CI 配置。读取 [GitHub Actions 发布指南](references/github-actions.md)，区分本仓库由 artifact ledger 与 `scripts/` 驱动的 workflow 和可复用的通用资产模板；模板需要针对目标仓库配置，不与本仓库实现等同。遵守：
 
 - PR 只做本地检查和 dry-run，不读取发布 Token。
 - 手动和 Tag 模式使用明确路径；变更自动模式使用受限检测器生成显式 matrix，不依赖平台隐式递归。
-- 优先复用目标仓库已有 artifact ledger；没有等价能力时，复制 `assets/github-actions/detect_changed_skills.py`、`assets/github-actions/clawhub_target.py` 和 `assets/github-actions/changed-skill-release.yml`。
-- 正式 job 使用平台对应的 Secret 和 `whoami` 前置检查；默认配置 GitHub Environment required reviewers。
-- ClawHub 为每个路径显式配置 slug 与 `new`/`update` 模式，并设置预期 `CLAWHUB_PUBLISHER`；个人发布把 `CLAWHUB_OWNER` 留空，组织发布时两者填写同一已授权 handle。
+- 优先复用目标仓库已有 artifact ledger；没有等价能力时，才复制 `assets/github-actions/` 下通用检测器、ClawHub 目标辅助脚本和 workflow 模板，并配置新建/更新目标。
+- 正式 job 使用平台对应的 Secret 和 publisher 身份前置检查。是否使用 GitHub Environment 审批按该 workflow 的已确认策略配置；不要把模板要求写成现有 workflow 已有的行为。
+- ClawHub 使用 publisher+slug 作为目标身份并设置预期 `CLAWHUB_PUBLISHER`；组织发布时 `CLAWHUB_OWNER` 与其相同，个人发布留空。通用资产模板另需为每条路径配置 `new`/`update`；本仓库 workflow 使用固定 `mc0571-` slug 前缀及 publisher-scoped inspect/发布校验。
 - 复制检测器时保留固定的 `PyYAML==6.0.3` 安装；双市场共享检测只校验共同版本规则，Tencent 专属顶层 `version` 交给 Tencent dry-run 阻断。
 - 同一市场 `max-parallel: 1` 并在首个失败后停止；Tencent 与 ClawHub job 相互独立。
 - 固定 CLI、reusable workflow 和 Action 版本；不使用 `@main`，不自动创建 Tag、Release、Environment、Secret 或保护规则。
+- 本仓库 workflow 在 `main` 的分发资产变更后发布新增或版本递增的 Skill；分发文件改变但版本未递增会失败，不会自动回填历史资产。`workflow_dispatch` 从 `main` 历史中的完整 commit SHA 重建矩阵，并通过 `market` 与 `skill_name` 选择重试项；Tencent 404 状态在 dispatch/rerun 时必须人工核实后才能重试。正式发布前会跳过已被 `origin/main` 较高版本取代或已删除的目标；取消 workflow 会停止发布，最终报告仍会运行。
 - 只保存不含 Token 的结构化发布结果；不要上传完整原始日志。
 
 ## 故障排查
@@ -232,7 +235,7 @@ clawhub skill publish "$SKILL_PATH" \
 - `command not found: clawhub`：安装或升级 npm/pnpm CLI。
 - OAuth 无法打开：使用 `CLAWHUB_TOKEN` 执行 `clawhub login --token`。
 - owner/权限错误：个人发布省略 `--owner`；新组织可创建 publisher，已有组织由 owner/admin 在 Settings 邀请当前账号为 `Publisher`、`Admin` 或 `Owner`；不要使用未经授权的 `--owner`。
-- slug 或 frontmatter 错误：检查目录名、`name`、`description`、版本和 `metadata.openclaw` 声明。
+- slug 或 frontmatter 错误：检查 publisher-scoped slug、`name`、`description`、版本和 `metadata.openclaw` 声明。
 - 包大小、隐藏文件或敏感信息错误：清理目录后重新 dry-run。
 - 已发布但搜索不到：检查 ClawHub 安全扫描和审核状态；不要重复提交相同内容。
 
