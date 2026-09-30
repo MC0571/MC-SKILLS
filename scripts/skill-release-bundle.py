@@ -121,7 +121,7 @@ def select_skillhub_target(
     return {"slug": name, "status": "unverified", "fallbackEligible": True}
 
 
-def fetch_skillhub_coordinate(host: str, namespace: str, slug: str) -> object | None:
+def fetch_skillhub_coordinate(host: str, namespace: str, slug: str) -> dict | None:
     coordinate = f"@{namespace}/{slug}"
     url = f"{host.rstrip('/')}/api/v1/skills/resolve?{urlencode({'coordinate': coordinate})}"
     try:
@@ -134,9 +134,12 @@ def fetch_skillhub_coordinate(host: str, namespace: str, slug: str) -> object | 
     except (URLError, TimeoutError) as error:
         raise BundleError(f"SkillHub scoped resolve failed: {type(error).__name__}") from None
     try:
-        return json.loads(body)
+        payload = json.loads(body)
     except (UnicodeError, ValueError, RecursionError) as error:
         raise BundleError("SkillHub scoped resolve returned invalid JSON") from None
+    if not isinstance(payload, dict):
+        raise BundleError("SkillHub scoped resolve returned no public Skill object")
+    return payload
 
 
 def resolve_skillhub_target(
@@ -195,18 +198,22 @@ def is_skillhub_slug_occupancy_conflict(payload: object, publish_exit_code: int)
     if not isinstance(body, dict):
         return False
     excluded = ("version", "版本", "pending", "review", "审核", "scan", "扫描")
-    occupied = (
-        "already exists", "already taken", "is taken", "taken", "in use",
-        "occupied", "已被占用", "被占用", "已占用", "已被使用", "已存在",
-        "已被其他用户占用", "被其他用户占用",
-    )
     messages = [body[field].casefold() for field in ("error", "message") if isinstance(body.get(field), str)]
     combined = " ".join(messages)
-    return (
-        "slug" in combined
-        and not any(term in combined for term in excluded)
-        and any(term in combined for term in occupied)
+    if any(term in combined for term in excluded) or re.search(
+        r"\b(?:not|isn't|hasn't|never)\b|(?:未|不再|不被|没有|没被|并非|并未)", combined
+    ):
+        return False
+    english = re.compile(
+        r"\bslug(?:\s+['\"`]?[a-z0-9][a-z0-9-]{0,63}['\"`]?)?\s+"
+        r"(?:(?:(?:is|has been)\s+)?already\s+(?:taken|occupied|in\s+use|exists)|"
+        r"(?:(?:is|has been)\s+)?(?:taken|occupied|in\s+use|exists))\b"
     )
+    chinese = re.compile(
+        r"\bslug(?:\s+[a-z0-9][a-z0-9-]{0,63})?\s*"
+        r"(?:已被其他用户占用|已被占用|被占用|已占用|已被使用|已存在)"
+    )
+    return any(english.search(message) or chinese.search(message) for message in messages)
 
 
 def display_name(text: str, source: str) -> str:
@@ -451,6 +458,39 @@ def run_self_test() -> None:
     from tempfile import TemporaryDirectory
     import subprocess
     import yaml
+    from unittest.mock import patch
+
+    class FakeResponse:
+        def __init__(self, body: bytes):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return self.body
+
+    with patch.object(sys.modules[__name__], "urlopen", return_value=FakeResponse(b'{"ok":true}')):
+        assert fetch_skillhub_coordinate("https://example.invalid", "ns", "name") == {"ok": True}
+    with patch.object(
+        sys.modules[__name__],
+        "urlopen",
+        side_effect=HTTPError("https://example.invalid", 404, "Not Found", None, None),
+    ):
+        assert fetch_skillhub_coordinate("https://example.invalid", "ns", "name") is None
+    for invalid_json in (b"null", b"[]", b"42", b"not-json"):
+        with patch.object(
+            sys.modules[__name__], "urlopen", return_value=FakeResponse(invalid_json)
+        ):
+            try:
+                fetch_skillhub_coordinate("https://example.invalid", "ns", "name")
+            except BundleError:
+                pass
+            else:
+                raise AssertionError(f"invalid SkillHub resolve response was accepted: {invalid_json!r}")
 
     result_filter = (
         Path(__file__).resolve().parents[1]
@@ -806,6 +846,23 @@ def run_self_test() -> None:
     )
     assert is_skillhub_slug_occupancy_conflict(
         {"status": 409, "body": {"error": "slug 已被其他用户占用"}}, 1
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {"status": 409, "body": {"error": "slug not taken"}}, 1
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {
+            "status": 409,
+            "body": {"error": "slug sample is already taken", "message": "slug is not taken"},
+        },
+        1,
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {
+            "status": 409,
+            "body": {"error": "slug is invalid", "message": "another item already exists"},
+        },
+        1,
     )
     assert not is_skillhub_slug_occupancy_conflict(
         {"status": 409, "body": {"error": "slug conflict"}}, 1
