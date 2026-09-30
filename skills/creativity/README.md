@@ -9,7 +9,7 @@
 |---|---:|---|
 | [image-art-direction](./image-art-direction/SKILL.md) | 0.6.3 | 将人物、角色、产品、食物、建筑、室内、电影或纪实场景的静态图像需求转为连贯、可执行、可检视的视觉规格，并按需生成、编辑、评审或定向修订图像。 |
 
-从 Preview / latest source 安装本主题当前全部 skills：
+从 `main` 安装本主题当前全部 skills：
 
 ```bash
 npx skills add https://github.com/MC-and-his-Agents/MC-AGENT-KIT/tree/main/skills --full-depth --skill image-art-direction
