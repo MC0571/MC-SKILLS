@@ -134,9 +134,8 @@ jobs:
               exit 1
               ;;
           esac
-          printf 'base_sha=%s\n' "$base" >> "$GITHUB_OUTPUT"
-          printf 'target_sha=%s\n' "$target" >> "$GITHUB_OUTPUT"
-          printf 'scope=%s\n' "${scope:-changed}" >> "$GITHUB_OUTPUT"
+          printf 'base_sha=%s\ntarget_sha=%s\nscope=%s\n' \
+            "$base" "$target" "${scope:-changed}" >> "$GITHUB_OUTPUT"
       - name: Validate the exact target repository contracts
         env:
           BASE_SHA: ${{ steps.refs.outputs.base_sha }}
