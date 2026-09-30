@@ -414,7 +414,7 @@ jobs:
               --changelog "自动发布 ${TARGET_SHA:0:12}" \
               --json > "$raw_result"
             jq -e --arg name "$name" --arg slug "$slug" --arg version "$version" '
-              select(type == "object" and has("skillId") and has("status") and has("publicUrl") and (.status | type == "string")) |
+              select(type == "object" and has("skillId") and has("status") and (.status | type == "string")) |
               {name: $name, slug: $slug, version: $version, skillId, status, publicUrl}
             ' "$raw_result" > "$RUNNER_TEMP/tencent-results/$name.json"
           done < <(jq -c '.include[]' <<< "$RELEASE_MATRIX")

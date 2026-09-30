@@ -216,7 +216,7 @@ jobs:
             --changelog "自动发布 ${GITHUB_SHA::12}" \
             --json > "$raw_result"
           jq -e --arg name "$SKILL_NAME" --arg version "$SKILL_VERSION" \
-            'select(type == "object" and has("skillId") and has("status") and has("publicUrl") and (.status | type == "string")) | {name: $name, version: $version, skillId, status, publicUrl}' \
+            'select(type == "object" and has("skillId") and has("status") and (.status | type == "string")) | {name: $name, version: $version, skillId, status, publicUrl}' \
             "$raw_result" > "$RUNNER_TEMP/tencent-publish.json"
       - uses: actions/upload-artifact@v4
         if: always()
