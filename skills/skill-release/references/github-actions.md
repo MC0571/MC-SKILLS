@@ -132,8 +132,8 @@ assets/github-actions/detect_changed_skills.py
   → .github/scripts/detect_changed_skills.py
 assets/github-actions/clawhub_target.py
   → .github/scripts/clawhub_target.py
-assets/github-actions/skillhub_publish_result.jq
-  → .github/scripts/skillhub_publish_result.jq
+assets/github-actions/skillhub_publish_result.txt
+  → .github/scripts/skillhub_publish_result.txt
 assets/github-actions/changed-skill-release.yml
   → .github/workflows/skill-release.yml
 ```
