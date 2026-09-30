@@ -2,7 +2,7 @@
 name: skill-release
 description: 检查、预检、发布并配置手动、Tag 或按变更自动发布 Skill 到腾讯 SkillHub 或 ClawHub。用户要发布或更新本地 SKILL、为扁平或一层集合目录配置 GitHub Actions、同步多个 Skill，或排查 Token、slug、版本、许可和审核状态问题时使用。
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
   category: "Developer Tools"
 ---
 
@@ -210,7 +210,7 @@ clawhub skill publish "$SKILL_PATH" \
 
 - PR 只做本地检查和 dry-run，不读取发布 Token。
 - 手动和 Tag 模式使用明确路径；变更自动模式使用受限检测器生成显式 matrix，不依赖平台隐式递归。
-- 优先复用目标仓库已有 artifact ledger；没有等价能力时，才复制 `assets/github-actions/` 下通用检测器、ClawHub 目标辅助脚本和 workflow 模板，并配置新建/更新目标。
+- 优先复用目标仓库已有 artifact ledger；没有等价能力时，才复制 `assets/github-actions/` 下通用检测器、ClawHub 目标辅助脚本、SkillHub 结果投影 filter 和 workflow 模板，并配置新建/更新目标。
 - 正式 job 使用平台对应的 Secret 和 publisher 身份前置检查。是否使用 GitHub Environment 审批按该 workflow 的已确认策略配置；不要把模板要求写成现有 workflow 已有的行为。
 - ClawHub 使用 publisher+slug 作为目标身份并设置预期 `CLAWHUB_PUBLISHER`；组织发布时 `CLAWHUB_OWNER` 与其相同，个人发布留空。通用资产模板另需为每条路径配置 `new`/`update`；本仓库 workflow 使用固定 `mc0571-` slug 前缀及 publisher-scoped inspect/发布校验。
 - 复制检测器时保留固定的 `PyYAML==6.0.3` 安装；双市场共享检测只校验共同版本规则，Tencent 专属顶层 `version` 交给 Tencent dry-run 阻断。

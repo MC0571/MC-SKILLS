@@ -1,5 +1,6 @@
 # Copy this file to .github/workflows/skill-release.yml and copy
-# detect_changed_skills.py and clawhub_target.py to .github/scripts/.
+# detect_changed_skills.py, clawhub_target.py and skillhub_publish_result.jq
+# to .github/scripts/.
 # Remove the jobs for any marketplace the user did not authorize.
 name: Publish changed Skills
 
@@ -9,6 +10,7 @@ on:
       - "skills/**"
       - ".github/scripts/detect_changed_skills.py"
       - ".github/scripts/clawhub_target.py"
+      - ".github/scripts/skillhub_publish_result.jq"
       - ".github/workflows/skill-release.yml"
   push:
     branches:
@@ -17,6 +19,7 @@ on:
       - "skills/**"
       - ".github/scripts/detect_changed_skills.py"
       - ".github/scripts/clawhub_target.py"
+      - ".github/scripts/skillhub_publish_result.jq"
       - ".github/workflows/skill-release.yml"
 
 permissions:
@@ -216,7 +219,8 @@ jobs:
             --changelog "自动发布 ${GITHUB_SHA::12}" \
             --json > "$raw_result"
           jq -e --arg name "$SKILL_NAME" --arg version "$SKILL_VERSION" \
-            'select(type == "object" and has("skillId") and has("status") and (.status | type == "string")) | {name: $name, version: $version, skillId, status, publicUrl}' \
+            --arg slug "" \
+            -f .github/scripts/skillhub_publish_result.jq \
             "$raw_result" > "$RUNNER_TEMP/tencent-publish.json"
       - uses: actions/upload-artifact@v4
         if: always()
