@@ -1,0 +1,52 @@
+test_absolute_and_home_paths (test_inspect_instructions.InventoryTests.test_absolute_and_home_paths) ... ok
+test_anchor_is_not_claimed_checked (test_inspect_instructions.InventoryTests.test_anchor_is_not_claimed_checked) ... ok
+test_angle_bracket_link (test_inspect_instructions.InventoryTests.test_angle_bracket_link) ... ok
+test_broken_symlink (test_inspect_instructions.InventoryTests.test_broken_symlink) ... ok
+test_case_variant_is_not_claimed_canonical (test_inspect_instructions.InventoryTests.test_case_variant_is_not_claimed_canonical) ... ok
+test_cli_invalid_root_exit_two (test_inspect_instructions.InventoryTests.test_cli_invalid_root_exit_two) ... ok
+test_cli_json_and_no_worktree_write (test_inspect_instructions.InventoryTests.test_cli_json_and_no_worktree_write) ... ok
+test_code_fences_are_not_parsed (test_inspect_instructions.InventoryTests.test_code_fences_are_not_parsed) ... ok
+test_default_exclusions (test_inspect_instructions.InventoryTests.test_default_exclusions) ... ok
+test_directory_symlink_not_traversed (test_inspect_instructions.InventoryTests.test_directory_symlink_not_traversed) ... ok
+test_empty_repo (test_inspect_instructions.InventoryTests.test_empty_repo) ... ok
+test_encoded_traversal (test_inspect_instructions.InventoryTests.test_encoded_traversal) ... ok
+test_entry_limit_reports_partial_scan (test_inspect_instructions.InventoryTests.test_entry_limit_reports_partial_scan) ... ok
+test_existing_and_missing_links (test_inspect_instructions.InventoryTests.test_existing_and_missing_links) ... ok
+test_extra_exclusion (test_inspect_instructions.InventoryTests.test_extra_exclusion) ... ok
+test_invalid_limits (test_inspect_instructions.InventoryTests.test_invalid_limits) ... ok
+test_invalid_root (test_inspect_instructions.InventoryTests.test_invalid_root) ... ok
+test_invalid_utf8 (test_inspect_instructions.InventoryTests.test_invalid_utf8) ... ok
+test_long_fence_requires_matching_close (test_inspect_instructions.InventoryTests.test_long_fence_requires_matching_close) ... ok
+test_no_writes_or_embedded_command_execution (test_inspect_instructions.InventoryTests.test_no_writes_or_embedded_command_execution) ... ok
+test_outside_reference_not_read (test_inspect_instructions.InventoryTests.test_outside_reference_not_read) ... ok
+test_query_reference_not_echoed (test_inspect_instructions.InventoryTests.test_query_reference_not_echoed) ... ok
+test_reference_uses_source_directory (test_inspect_instructions.InventoryTests.test_reference_uses_source_directory) ... ok
+test_role_hint_does_not_grant_authority (test_inspect_instructions.InventoryTests.test_role_hint_does_not_grant_authority) ... ok
+test_root_and_nested_names (test_inspect_instructions.InventoryTests.test_root_and_nested_names) ... ok
+test_same_body_is_candidate_not_error (test_inspect_instructions.InventoryTests.test_same_body_is_candidate_not_error) ... ok
+test_sensitive_directories_are_not_descended (test_inspect_instructions.InventoryTests.test_sensitive_directories_are_not_descended) ... ok
+test_sensitive_references_not_inspected (test_inspect_instructions.InventoryTests.test_sensitive_references_not_inspected) ... ok
+test_size_limit (test_inspect_instructions.InventoryTests.test_size_limit) ... ok
+test_standalone_at_import (test_inspect_instructions.InventoryTests.test_standalone_at_import) ... ok
+test_symlink_cycle (test_inspect_instructions.InventoryTests.test_symlink_cycle) ... ok
+test_symlink_inside (test_inspect_instructions.InventoryTests.test_symlink_inside) ... ok
+test_symlink_outside (test_inspect_instructions.InventoryTests.test_symlink_outside) ... ok
+test_symlink_sensitive (test_inspect_instructions.InventoryTests.test_symlink_sensitive) ... ok
+test_symlink_unsupported_target (test_inspect_instructions.InventoryTests.test_symlink_unsupported_target) ... ok
+test_url_not_fetched_or_echoed (test_inspect_instructions.InventoryTests.test_url_not_fetched_or_echoed) ... ok
+test_urlencoded_spaces (test_inspect_instructions.InventoryTests.test_urlencoded_spaces) ... ok
+test_utf8_counts_and_hash (test_inspect_instructions.InventoryTests.test_utf8_counts_and_hash) ... ok
+test_evaluation_cases_are_safe_fixture_definitions (test_package.PackageTests.test_evaluation_cases_are_safe_fixture_definitions) ... ok
+test_frontmatter_name_and_description (test_package.PackageTests.test_frontmatter_name_and_description) ... ok
+test_inventory_has_no_network_or_process_dependencies (test_package.PackageTests.test_inventory_has_no_network_or_process_dependencies) ... ok
+test_local_markdown_link_targets (test_package.PackageTests.test_local_markdown_link_targets) ... ok
+test_python_files_parse_as_python310 (test_package.PackageTests.test_python_files_parse_as_python310) ... ok
+test_required_files (test_package.PackageTests.test_required_files) ... ok
+test_source_records_are_pinned_and_scoped (test_package.PackageTests.test_source_records_are_pinned_and_scoped) ... ok
+test_text_files_are_utf8_with_trailing_newline (test_package.PackageTests.test_text_files_are_utf8_with_trailing_newline) ... ok
+test_ui_metadata_is_present (test_package.PackageTests.test_ui_metadata_is_present) ... ok
+
+----------------------------------------------------------------------
+Ran 47 tests in 1.278s
+
+OK
