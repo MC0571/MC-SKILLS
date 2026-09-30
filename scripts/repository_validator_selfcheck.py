@@ -346,7 +346,7 @@ def check_plugins(root, validate_plugins, failures) -> None:
 
 def check_npx_readmes(root, failures) -> None:
     (root / "README.md").write_text(
-        "npx skills add MC-and-his-Agents/MC-AGENT-KIT --skill same\n",
+        "npx skills add MC0571/MC-SKILLS --skill same\n",
         encoding="utf-8",
     )
     expect(

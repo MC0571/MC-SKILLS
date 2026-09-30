@@ -32,7 +32,7 @@ jobs:
           python3 scripts/validate-repository.py --self-test
       - name: Check Python and shell syntax
         env:
-          PYTHONPYCACHEPREFIX: /tmp/mc-agent-kit-pycache
+          PYTHONPYCACHEPREFIX: /tmp/mc-skills-pycache
         run: |
           python3 -m compileall -q scripts skills plugins
           find scripts plugins skills -type f -name '*.sh' -exec bash -n {} +

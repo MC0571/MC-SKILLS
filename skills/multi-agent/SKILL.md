@@ -2,7 +2,7 @@
 name: multi-agent
 description: 在用户要求多 Agent 协作、委派或并行工作时，协调主 Agent 与 subagent 的职责、模型路由、交接、审查和集成；普通单 Agent 任务不因此启动委派。
 metadata:
-  version: 0.2.1
+  version: 0.2.2
   category: "Productivity"
 ---
 
@@ -14,7 +14,7 @@ metadata:
 
 - 主 Agent 是唯一集成者，负责目标与范围、依赖和共享状态、接口及仓库不变量、任务分配、冲突裁决、GitHub 写入、最终验收与合并决定；原则上不承担已委派的实质实现。
 - 承担探索、研究、实现、调试、测试、迁移、验证或事实收集的 subagent 是执行型，使用 `gpt-6-luna`/max。按实际职责分类，不靠 agent 名称规避路由，也不静默继承主 Agent 模型。
-- 只做独立审查的 subagent 是 Reviewer，使用 `gpt-6-astra`/low。Reviewer 检查正确性、回归、契约与仓库不变量、测试覆盖、边界和副作用，返回有依据的 findings；不参与实现。若 Reviewer 修改了代码，该修改须由另一独立 Reviewer 或主 Agent 审查。
+- 只做独立审查的 subagent 是 Reviewer，使用 `gpt-6.1-sol`/xhigh。Reviewer 检查正确性、回归、契约与仓库不变量、测试覆盖、边界和副作用，返回有依据的 findings；不参与实现。若 Reviewer 修改了代码，该修改须由另一独立 Reviewer 或主 Agent 审查。
 - 不为这些职责选择其他模型或推理强度；指定模型不可用时，说明受影响的委派，不能悄悄换模型。
 
 ## 分解、派发与集成

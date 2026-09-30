@@ -23,7 +23,7 @@ from repository_validator_selfcheck import run_self_test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MARKETPLACE_ID = "mc-agent-kit"
+MARKETPLACE_ID = "mc-skills"
 SHARED_PLUGIN_FIELDS = (
     "name", "version", "description", "author", "license", "keywords", "skills", "mcpServers"
 )

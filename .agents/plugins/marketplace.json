@@ -1,7 +1,7 @@
 {
-  "name": "mc-agent-kit",
+  "name": "mc-skills",
   "interface": {
-    "displayName": "MC-AGENT-KIT"
+    "displayName": "MC-SKILLS"
   },
   "plugins": [
     {
