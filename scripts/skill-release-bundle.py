@@ -9,6 +9,9 @@ import os
 import re
 import sys
 from pathlib import Path, PurePosixPath
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 from repository_artifacts import (
     SEMVER_PATTERN,
@@ -51,23 +54,166 @@ def superseding_main_version(repository: Path, ref: str, skill_path: str, target
     return main_version if semver_key(main_version) > semver_key(target_version) else None
 
 
-def can_create_after_skillhub_404(event_name: str, run_attempt: str) -> bool:
-    return event_name == "push" and run_attempt == "1"
+def can_create_after_skillhub_404(event_name: str, run_attempt: str, scope: str = "changed") -> bool:
+    return run_attempt == "1" and (
+        event_name == "push" or (event_name == "workflow_dispatch" and scope == "all")
+    )
 
 
-def validate_skillhub_public_state(payload: object, publisher: str, local_version: str) -> None:
+def validate_skillhub_public_state(
+    payload: object,
+    publisher: str,
+    namespace: str,
+    slug: str,
+    local_version: str,
+) -> str:
     if not isinstance(payload, dict):
         raise BundleError("SkillHub returned no public Skill object")
     owner = payload.get("owner")
     owner_handle = owner.get("handle") if isinstance(owner, dict) else None
     if not isinstance(owner_handle, str) or owner_handle.casefold() != publisher.casefold():
         raise BundleError("visible SkillHub slug is owned by a different publisher")
+    public_namespace = payload.get("namespace")
+    namespace_handle = public_namespace.get("handle") if isinstance(public_namespace, dict) else None
+    if not isinstance(namespace_handle, str) or namespace_handle.casefold() != namespace.casefold():
+        raise BundleError("visible SkillHub slug is in a different namespace")
+    public_slug = public_namespace.get("publicSlug") if isinstance(public_namespace, dict) else None
+    if not isinstance(public_slug, str) or public_slug != slug:
+        raise BundleError("SkillHub resolve returned a different public slug")
     latest = payload.get("latestVersion")
     latest_version = latest.get("version") if isinstance(latest, dict) else None
     if not isinstance(latest_version, str) or not SEMVER_PATTERN.fullmatch(latest_version):
         raise BundleError("SkillHub returned an invalid latestVersion.version")
-    if not SEMVER_PATTERN.fullmatch(local_version) or semver_key(local_version) <= semver_key(latest_version):
-        raise BundleError(f"local version {local_version} is not above SkillHub latest {latest_version}")
+    if not SEMVER_PATTERN.fullmatch(local_version):
+        raise BundleError(f"local version is not valid SemVer: {local_version!r}")
+    local_key, latest_key = semver_key(local_version), semver_key(latest_version)
+    if local_key < latest_key:
+        raise BundleError(f"local version {local_version} is below SkillHub latest {latest_version}")
+    return "skip" if local_key == latest_key else "publish"
+
+
+def select_skillhub_target(
+    name: str,
+    publisher: str,
+    namespace: str,
+    local_version: str,
+    bare_payload: object | None,
+    suffix_payload: object | None,
+    exact_slug: str | None = None,
+) -> dict:
+    suffix = f"{name}-mc"
+    if exact_slug is not None:
+        if exact_slug not in {name, suffix}:
+            raise BundleError("unsupported SkillHub slug selection")
+        payload = bare_payload if exact_slug == name else suffix_payload
+        status = (
+            "unverified"
+            if payload is None
+            else validate_skillhub_public_state(payload, publisher, namespace, exact_slug, local_version)
+        )
+        return {"slug": exact_slug, "status": status, "fallbackEligible": False}
+    if bare_payload is not None:
+        status = validate_skillhub_public_state(bare_payload, publisher, namespace, name, local_version)
+        return {"slug": name, "status": status, "fallbackEligible": False}
+    if suffix_payload is not None:
+        status = validate_skillhub_public_state(suffix_payload, publisher, namespace, suffix, local_version)
+        return {"slug": suffix, "status": status, "fallbackEligible": False}
+    return {"slug": name, "status": "unverified", "fallbackEligible": True}
+
+
+def fetch_skillhub_coordinate(host: str, namespace: str, slug: str) -> dict | None:
+    coordinate = f"@{namespace}/{slug}"
+    url = f"{host.rstrip('/')}/api/v1/skills/resolve?{urlencode({'coordinate': coordinate})}"
+    try:
+        with urlopen(url, timeout=20) as response:
+            body = response.read()
+    except HTTPError as error:
+        if error.code == 404:
+            return None
+        raise BundleError(f"SkillHub scoped resolve failed with HTTP {error.code}") from None
+    except (URLError, TimeoutError) as error:
+        raise BundleError(f"SkillHub scoped resolve failed: {type(error).__name__}") from None
+    try:
+        payload = json.loads(body)
+    except (UnicodeError, ValueError, RecursionError) as error:
+        raise BundleError("SkillHub scoped resolve returned invalid JSON") from None
+    if not isinstance(payload, dict):
+        raise BundleError("SkillHub scoped resolve returned no public Skill object")
+    return payload
+
+
+def resolve_skillhub_target(
+    host: str,
+    namespace: str,
+    publisher: str,
+    local_version: str,
+    name: str,
+    exact_slug: str | None = None,
+) -> dict:
+    if exact_slug is not None:
+        payload = fetch_skillhub_coordinate(host, namespace, exact_slug)
+        return select_skillhub_target(
+            name, publisher, namespace, local_version,
+            payload if exact_slug == name else None,
+            payload if exact_slug == f"{name}-mc" else None,
+            exact_slug,
+        )
+    bare_payload = fetch_skillhub_coordinate(host, namespace, name)
+    if bare_payload is not None:
+        return select_skillhub_target(
+            name, publisher, namespace, local_version, bare_payload, None
+        )
+    suffix_payload = fetch_skillhub_coordinate(host, namespace, f"{name}-mc")
+    return select_skillhub_target(
+        name, publisher, namespace, local_version, None, suffix_payload
+    )
+
+
+def fallback_slug_is_unique(state: dict, skill_path: str) -> bool:
+    skill = next(
+        (
+            artifact
+            for artifact in state["artifacts"]
+            if artifact["type"] == "skill" and artifact["path"] == skill_path
+        ),
+        None,
+    )
+    if skill is None:
+        raise BundleError(f"{skill_path}: no standalone Skill exists in the release snapshot")
+    fallback_name = f"{skill['name']}-mc"
+    return not any(
+        artifact["type"] == "skill"
+        and artifact["path"] != skill_path
+        and artifact["name"] == fallback_name
+        for artifact in state["artifacts"]
+    )
+
+
+def is_skillhub_slug_occupancy_conflict(payload: object, publish_exit_code: int) -> bool:
+    if publish_exit_code == 0 or not isinstance(payload, dict) or type(payload.get("status")) is not int:
+        return False
+    if payload["status"] != 409:
+        return False
+    body = payload.get("body")
+    if not isinstance(body, dict):
+        return False
+    excluded = ("version", "版本", "pending", "review", "审核", "scan", "扫描")
+    messages = [body[field].casefold() for field in ("error", "message") if isinstance(body.get(field), str)]
+    combined = " ".join(messages)
+    if any(term in combined for term in excluded) or re.search(
+        r"\b(?:not|isn't|hasn't|never)\b|(?:未|不再|不被|没有|没被|并非|并未)", combined
+    ):
+        return False
+    english = re.compile(
+        r"\bslug(?:\s+['\"`]?[a-z0-9][a-z0-9-]{0,63}['\"`]?)?\s+"
+        r"(?:(?:(?:is|has been)\s+)?already\s+(?:taken|occupied|in\s+use|exists)|"
+        r"(?:(?:is|has been)\s+)?(?:taken|occupied|in\s+use|exists))\b"
+    )
+    chinese = re.compile(
+        r"\bslug(?:\s+[a-z0-9][a-z0-9-]{0,63})?\s*"
+        r"(?:已被其他用户占用|已被占用|被占用|已占用|已被使用|已存在)"
+    )
+    return any(english.search(message) or chinese.search(message) for message in messages)
 
 
 def display_name(text: str, source: str) -> str:
@@ -78,7 +224,7 @@ def display_name(text: str, source: str) -> str:
     raise BundleError(f"{source}: add a top-level Markdown heading for Tencent displayName")
 
 
-def tencent_frontmatter(text: str, source: str, name: str, version: str) -> str:
+def tencent_frontmatter(text: str, source: str, name: str, version: str, slug: str) -> str:
     lines = text.splitlines()
     if not lines or lines[0] != "---":
         raise BundleError(f"{source}: missing opening frontmatter delimiter")
@@ -97,7 +243,7 @@ def tencent_frontmatter(text: str, source: str, name: str, version: str) -> str:
         raise BundleError(f"{source}: metadata.version is not valid SemVer")
 
     new_fields = {
-        "slug": f"mc0571-{name}",
+        "slug": slug,
         "version": version,
         "displayName": title,
     }
@@ -133,7 +279,14 @@ def tencent_frontmatter(text: str, source: str, name: str, version: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def stage_skill(repository: Path, ref: str, skill_path: str, destination: Path, market: str) -> dict:
+def stage_skill(
+    repository: Path,
+    ref: str,
+    skill_path: str,
+    destination: Path,
+    market: str,
+    skillhub_slug: str = "name",
+) -> dict:
     if market not in {"skillhub", "clawhub"}:
         raise BundleError("market must be 'skillhub' or 'clawhub'")
     if not SKILL_PATH_PATTERN.fullmatch(skill_path):
@@ -150,6 +303,11 @@ def stage_skill(repository: Path, ref: str, skill_path: str, destination: Path, 
     )
     if skill is None:
         raise BundleError(f"{skill_path}: no standalone Skill exists at {ref}")
+    if skillhub_slug not in {"name", "name-mc"}:
+        raise BundleError("--skillhub-slug must be 'name' or 'name-mc'")
+    slug = skill["name"] if skillhub_slug == "name" else f"{skill['name']}-mc"
+    if market == "skillhub" and skillhub_slug == "name-mc" and not fallback_slug_is_unique(state, skill_path):
+        raise BundleError("SkillHub fallback slug collides with another standalone Skill name")
 
     entries = tracked_tree(repository, state["commit"])
     prefix = f"{skill_path}/"
@@ -179,18 +337,20 @@ def stage_skill(repository: Path, ref: str, skill_path: str, destination: Path, 
         if relative.as_posix() == "SKILL.md":
             source = content.decode("utf-8")
             if market == "skillhub":
-                source = tencent_frontmatter(source, entry.path, skill["name"], skill["version"])
+                source = tencent_frontmatter(source, entry.path, skill["name"], skill["version"], slug)
             content = source.encode("utf-8")
             skill_file = target
         target.write_bytes(content)
         if entry.mode == "100755":
             target.chmod(0o755)
     source_text = skill_file.read_text(encoding="utf-8") if skill_file else ""
+    if market == "clawhub":
+        slug = skill["name"]
     return {
         "name": skill["name"],
         "path": skill_path,
         "version": skill["version"],
-        "slug": f"mc0571-{skill['name']}",
+        "slug": slug,
         "displayName": display_name(source_text, f"{skill_path}/SKILL.md"),
         "directory": str(destination),
         "files": len(files),
@@ -202,12 +362,18 @@ def main() -> int:
     parser.add_argument("--ref")
     parser.add_argument("--path")
     parser.add_argument("--market", choices=("skillhub", "clawhub"))
+    parser.add_argument("--skillhub-slug", choices=("name", "name-mc"), default="name")
     parser.add_argument("--destination", type=Path)
     parser.add_argument("--github-output", type=Path)
-    parser.add_argument("--validate-skillhub-public", type=Path)
+    parser.add_argument("--resolve-skillhub-target", action="store_true")
+    parser.add_argument("--host")
+    parser.add_argument("--namespace")
+    parser.add_argument("--classify-skillhub-conflict", type=Path)
+    parser.add_argument("--publish-exit-code", type=int)
     parser.add_argument("--check-current-skill", action="store_true")
     parser.add_argument("--check-skillhub-404", action="store_true")
     parser.add_argument("--event-name")
+    parser.add_argument("--scope", choices=("changed", "all"), default="changed")
     parser.add_argument("--run-attempt")
     parser.add_argument("--publisher")
     parser.add_argument("--version")
@@ -217,12 +383,47 @@ def main() -> int:
         if args.self_test:
             run_self_test()
             return 0
-        if args.validate_skillhub_public:
-            if not args.publisher or not args.version:
-                parser.error("--publisher and --version are required with --validate-skillhub-public")
-            payload = json.loads(args.validate_skillhub_public.read_text(encoding="utf-8"))
-            validate_skillhub_public_state(payload, args.publisher, args.version)
-            print(json.dumps({"status": "verified"}))
+        if args.resolve_skillhub_target:
+            if not all((args.ref, args.path, args.host, args.namespace, args.publisher, args.version)):
+                parser.error("--ref, --path, --host, --namespace, --publisher and --version are required with --resolve-skillhub-target")
+            state = snapshot(Path.cwd(), args.ref)
+            skill = next(
+                (
+                    artifact
+                    for artifact in state["artifacts"]
+                    if artifact["type"] == "skill" and artifact["path"] == args.path
+                ),
+                None,
+            )
+            if skill is None:
+                raise BundleError(f"{args.path}: no standalone Skill exists at {args.ref}")
+            exact_slug = None
+            if args.skillhub_slug == "name-mc":
+                exact_slug = f"{skill['name']}-mc"
+            result = resolve_skillhub_target(
+                args.host,
+                args.namespace,
+                args.publisher,
+                args.version,
+                skill["name"],
+                exact_slug,
+            )
+            if result["slug"] == f"{skill['name']}-mc" and not fallback_slug_is_unique(
+                state, args.path
+            ):
+                raise BundleError("SkillHub fallback slug collides with another standalone Skill name")
+            print(json.dumps(result))
+            return 0
+        if args.classify_skillhub_conflict:
+            if args.publish_exit_code is None:
+                parser.error("--publish-exit-code is required with --classify-skillhub-conflict")
+            try:
+                payload = json.loads(args.classify_skillhub_conflict.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError, RecursionError):
+                payload = None
+            print(json.dumps({
+                "slugConflict": is_skillhub_slug_occupancy_conflict(payload, args.publish_exit_code)
+            }))
             return 0
         if args.check_current_skill:
             if not args.ref or not args.path or not args.version:
@@ -233,13 +434,15 @@ def main() -> int:
         if args.check_skillhub_404:
             if not args.event_name or not args.run_attempt:
                 parser.error("--event-name and --run-attempt are required with --check-skillhub-404")
-            if not can_create_after_skillhub_404(args.event_name, args.run_attempt):
-                raise BundleError("SkillHub public 404 may proceed only on the initial push run")
+            if not can_create_after_skillhub_404(args.event_name, args.run_attempt, args.scope):
+                raise BundleError("SkillHub public 404 may proceed only on the initial push or first-attempt all-scope run")
             print(json.dumps({"status": "unverified"}))
             return 0
         if not all((args.ref, args.path, args.market, args.destination)):
             parser.error("--ref, --path, --market and --destination are required")
-        result = stage_skill(Path.cwd(), args.ref, args.path, args.destination, args.market)
+        result = stage_skill(
+            Path.cwd(), args.ref, args.path, args.destination, args.market, args.skillhub_slug
+        )
         print(json.dumps(result, ensure_ascii=False))
         if args.github_output:
             with args.github_output.open("a", encoding="utf-8") as output:
@@ -255,13 +458,46 @@ def run_self_test() -> None:
     from tempfile import TemporaryDirectory
     import subprocess
     import yaml
+    from unittest.mock import patch
+
+    class FakeResponse:
+        def __init__(self, body: bytes):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return self.body
+
+    with patch.object(sys.modules[__name__], "urlopen", return_value=FakeResponse(b'{"ok":true}')):
+        assert fetch_skillhub_coordinate("https://example.invalid", "ns", "name") == {"ok": True}
+    with patch.object(
+        sys.modules[__name__],
+        "urlopen",
+        side_effect=HTTPError("https://example.invalid", 404, "Not Found", None, None),
+    ):
+        assert fetch_skillhub_coordinate("https://example.invalid", "ns", "name") is None
+    for invalid_json in (b"null", b"[]", b"42", b"not-json"):
+        with patch.object(
+            sys.modules[__name__], "urlopen", return_value=FakeResponse(invalid_json)
+        ):
+            try:
+                fetch_skillhub_coordinate("https://example.invalid", "ns", "name")
+            except BundleError:
+                pass
+            else:
+                raise AssertionError(f"invalid SkillHub resolve response was accepted: {invalid_json!r}")
 
     result_filter = (
         Path(__file__).resolve().parents[1]
         / "skills/skill-release/assets/github-actions/skillhub_publish_result.txt"
     )
 
-    def project_skillhub_result(raw: str, slug: str = "mc0571-sample") -> subprocess.CompletedProcess[str]:
+    def project_skillhub_result(raw: str, slug: str = "sample") -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 "jq",
@@ -291,7 +527,7 @@ def run_self_test() -> None:
     projected = json.loads(pending_result.stdout)
     assert projected == {
         "name": "sample",
-        "slug": "mc0571-sample",
+        "slug": "sample",
         "version": "1.2.3",
         "skillId": None,
         "status": "pending_review",
@@ -322,10 +558,64 @@ def run_self_test() -> None:
     workflow_path = Path(__file__).resolve().parents[1] / ".github/workflows/skill-release.yml"
     workflow_text = workflow_path.read_text(encoding="utf-8")
     workflow = yaml.safe_load(workflow_text)
+    refs_step = next(
+        step for step in workflow["jobs"]["detect"]["steps"] if step.get("id") == "refs"
+    )
+    refs_script = refs_step["run"]
+    current_sha = "a" * 40
+    historical_sha = "c" * 40
+    parent_sha = "b" * 40
+    git_stub = """git() {
+  case "$1" in
+    fetch|merge-base) return 0 ;;
+    rev-parse)
+      case "$2" in
+        "$FAKE_TARGET_SHA^{commit}") echo "$FAKE_TARGET_SHA" ;;
+        origin/main) echo "$FAKE_CURRENT_SHA" ;;
+        "$FAKE_CURRENT_SHA^") echo "$FAKE_PARENT_SHA" ;;
+        *) return 1 ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+}
+"""
+    with TemporaryDirectory() as temporary:
+        for scope in ("changed", "all"):
+            for selected_sha in (current_sha, historical_sha):
+                output_path = Path(temporary) / f"{scope}-{selected_sha[:1]}.out"
+                environment = {
+                    **os.environ,
+                    "EVENT_NAME": "workflow_dispatch",
+                    "EVENT_REF": "refs/heads/main",
+                    "INPUT_COMMIT_SHA": selected_sha,
+                    "INPUT_SCOPE": scope,
+                    "GITHUB_OUTPUT": str(output_path),
+                    "FAKE_CURRENT_SHA": current_sha,
+                    "FAKE_PARENT_SHA": parent_sha,
+                    "FAKE_TARGET_SHA": selected_sha,
+                }
+                refs_result = subprocess.run(
+                    ["bash"],
+                    input=f"{git_stub}\n{refs_script}",
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    env=environment,
+                )
+                accepted = selected_sha == current_sha
+                assert (refs_result.returncode == 0) is accepted, refs_result.stderr
+                if accepted:
+                    assert output_path.read_text(encoding="utf-8") == (
+                        f"base_sha={parent_sha}\ntarget_sha={current_sha}\nscope={scope}\n"
+                    )
+                else:
+                    assert "requires commit_sha to equal the current origin/main HEAD" in refs_result.stderr
+
     publish_step = next(
         step
         for step in workflow["jobs"]["tencent_publish"]["steps"]
-        if step.get("name") == "Publish changed Skills to SkillHub"
+        if step.get("name") == "Publish Skills to SkillHub"
     )
     publish_script = publish_step["run"]
     shell_check = subprocess.run(
@@ -472,7 +762,8 @@ def run_self_test() -> None:
         tencent = Path(temporary) / "tencent"
         result = stage_skill(repository, clean, "skills/sample", tencent, "skillhub")
         staged_text = (tencent / "SKILL.md").read_text(encoding="utf-8")
-        assert 'slug: "mc0571-sample"' in staged_text
+        assert 'slug: "sample"' in staged_text
+        assert result["slug"] == "sample"
         assert 'version: "1.2.3"' in staged_text
         assert 'displayName: "Sample Display"' in staged_text
         assert "metadata:\n  version: 1.2.3" in staged_text
@@ -482,8 +773,15 @@ def run_self_test() -> None:
         assert not bundled_filter.with_suffix(".jq").exists()
         assert not (tencent / ".DS_Store").exists() and not (tencent / "cache.pyc").exists()
         assert not (tencent / "__pycache__").exists()
+        tencent_suffix = Path(temporary) / "tencent-suffix"
+        suffix_result = stage_skill(
+            repository, clean, "skills/sample", tencent_suffix, "skillhub", "name-mc"
+        )
+        assert suffix_result["slug"] == "sample-mc"
+        assert 'slug: "sample-mc"' in (tencent_suffix / "SKILL.md").read_text(encoding="utf-8")
         clawhub = Path(temporary) / "clawhub"
-        stage_skill(repository, clean, "skills/sample", clawhub, "clawhub")
+        claw_bundle = stage_skill(repository, clean, "skills/sample", clawhub, "clawhub")
+        assert claw_bundle["slug"] == "sample"
         claw_text = (clawhub / "SKILL.md").read_text(encoding="utf-8")
         assert "slug:" not in claw_text and "displayName:" not in claw_text
         assert "metadata:\n  version: 1.2.3" in claw_text
@@ -494,25 +792,133 @@ def run_self_test() -> None:
                 pass
             else:
                 raise AssertionError(f"invalid release path was accepted: {invalid}")
+        collision = repository / "skills" / "sample-mc"
+        collision.mkdir()
+        (collision / "SKILL.md").write_text(
+            "---\nname: sample-mc\ndescription: test\nmetadata:\n  version: 1.0.0\n---\n\n# Sample Variant\n",
+            encoding="utf-8",
+        )
+        collision_ref = commit(repository, "add colliding skill")
+        assert not fallback_slug_is_unique(snapshot(repository, collision_ref), "skills/sample")
+        try:
+            stage_skill(
+                repository, collision_ref, "skills/sample", Path(temporary) / "collision",
+                "skillhub", "name-mc",
+            )
+        except BundleError as exc:
+            assert "collides" in str(exc), exc
+        else:
+            raise AssertionError("SkillHub fallback collision was allowed")
     public_state = {
         "owner": {"handle": "publisher"},
+        "namespace": {"handle": "indiv-mc", "publicSlug": "sample"},
         "latestVersion": {"version": "1.2.2"},
     }
-    validate_skillhub_public_state(public_state, "publisher", "1.2.3")
-    assert can_create_after_skillhub_404("push", "1")
-    assert not can_create_after_skillhub_404("push", "2")
-    assert not can_create_after_skillhub_404("workflow_dispatch", "1")
-    for invalid_state, owner, version in (
-        (public_state, "another-publisher", "1.2.3"),
-        (public_state, "publisher", "1.2.2"),
-        ({"owner": {"handle": "publisher"}, "latestVersion": {}}, "publisher", "1.2.3"),
+    assert validate_skillhub_public_state(
+        public_state, "publisher", "indiv-mc", "sample", "1.2.3"
+    ) == "publish"
+    assert validate_skillhub_public_state(
+        {**public_state, "latestVersion": {"version": "1.2.3"}},
+        "publisher",
+        "indiv-mc",
+        "sample",
+        "1.2.3",
+    ) == "skip"
+    suffix_state = {
+        **public_state,
+        "namespace": {"handle": "indiv-mc", "publicSlug": "sample-mc"},
+        "latestVersion": {"version": "1.2.3"},
+    }
+    assert select_skillhub_target(
+        "sample", "publisher", "indiv-mc", "1.2.3", None, suffix_state
+    ) == {"slug": "sample-mc", "status": "skip", "fallbackEligible": False}
+    assert select_skillhub_target(
+        "sample", "publisher", "indiv-mc", "1.2.3", None, None, "sample-mc"
+    ) == {"slug": "sample-mc", "status": "unverified", "fallbackEligible": False}
+    assert select_skillhub_target(
+        "sample", "publisher", "indiv-mc", "1.2.3", None, None
+    ) == {"slug": "sample", "status": "unverified", "fallbackEligible": True}
+    assert select_skillhub_target(
+        "sample", "publisher", "indiv-mc", "1.2.3", public_state, suffix_state
+    ) == {"slug": "sample", "status": "publish", "fallbackEligible": False}
+    assert is_skillhub_slug_occupancy_conflict(
+        {"status": 409, "body": {"error": "slug sample is already taken"}}, 1
+    )
+    assert is_skillhub_slug_occupancy_conflict(
+        {"status": 409, "body": {"error": "slug 已被其他用户占用"}}, 1
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {"status": 409, "body": {"error": "slug not taken"}}, 1
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {
+            "status": 409,
+            "body": {"error": "slug sample is already taken", "message": "slug is not taken"},
+        },
+        1,
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {
+            "status": 409,
+            "body": {"error": "slug is invalid", "message": "another item already exists"},
+        },
+        1,
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {"status": 409, "body": {"error": "slug conflict"}}, 1
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {"status": 409, "body": {"message": "slug already exists during version conflict"}}, 1
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {
+            "status": 409,
+            "body": {"error": "slug sample is already taken", "message": "version is pending review"},
+        },
+        1,
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {
+            "status": 409,
+            "body": {"error": "slug sample is already taken", "message": "security scan is running"},
+        },
+        1,
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {
+            "status": 409,
+            "body": {"error": "slug sample is already taken", "message": "slug is under review"},
+        },
+        1,
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {"status": 409, "body": {"error": "slug is occupied while pending review"}}, 1
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {"status": 403, "body": {"error": "slug is already taken"}}, 1
+    )
+    assert not is_skillhub_slug_occupancy_conflict(
+        {"status": 409, "body": {"error": "slug is already taken"}}, 0
+    )
+    for invalid_state, owner, namespace, slug, version in (
+        (public_state, "another-publisher", "indiv-mc", "sample", "1.2.3"),
+        (public_state, "publisher", "another-namespace", "sample", "1.2.3"),
+        (public_state, "publisher", "indiv-mc", "other-slug", "1.2.3"),
+        (public_state, "publisher", "indiv-mc", "sample", "1.2.1"),
+        ({**public_state, "latestVersion": {}}, "publisher", "indiv-mc", "sample", "1.2.3"),
     ):
         try:
-            validate_skillhub_public_state(invalid_state, owner, version)
+            validate_skillhub_public_state(invalid_state, owner, namespace, slug, version)
         except BundleError:
             pass
         else:
-            raise AssertionError("invalid public SkillHub state was accepted")
+            raise AssertionError("invalid scoped public SkillHub state was accepted")
+    assert can_create_after_skillhub_404("push", "1")
+    assert not can_create_after_skillhub_404("push", "2")
+    assert not can_create_after_skillhub_404("workflow_dispatch", "1")
+    assert can_create_after_skillhub_404("workflow_dispatch", "1", "all")
+    assert not can_create_after_skillhub_404("workflow_dispatch", "2", "all")
+    assert not can_create_after_skillhub_404("workflow_dispatch", "1", "changed")
     print("Skill release bundle self-test passed.")
 
 

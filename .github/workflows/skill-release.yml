@@ -1,4 +1,4 @@
-name: Publish changed Skills
+name: Publish Skills
 
 on:
   pull_request:
@@ -26,9 +26,17 @@ on:
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: Full commit SHA already present in main history
+        description: Full commit SHA equal to the current main HEAD
         required: true
         type: string
+      scope:
+        description: Publish changed Skills, or all standalone Skills in current main HEAD
+        required: true
+        default: changed
+        type: choice
+        options:
+          - changed
+          - all
       market:
         description: Market to publish when retrying a failed run
         required: true
@@ -39,7 +47,7 @@ on:
           - skillhub
           - clawhub
       skill_name:
-        description: Optional Skill name to retry; empty selects every changed Skill
+        description: Optional Skill name in the selected matrix; empty selects all entries
         required: false
         type: string
 
@@ -62,6 +70,7 @@ jobs:
     outputs:
       base_sha: ${{ steps.refs.outputs.base_sha }}
       target_sha: ${{ steps.refs.outputs.target_sha }}
+      scope: ${{ steps.refs.outputs.scope }}
       matrix: ${{ steps.changed.outputs.matrix }}
       has_changes: ${{ steps.changed.outputs.has_changes }}
       count: ${{ steps.changed.outputs.count }}
@@ -80,6 +89,7 @@ jobs:
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           PUSH_TARGET_SHA: ${{ github.sha }}
           INPUT_COMMIT_SHA: ${{ inputs.commit_sha }}
+          INPUT_SCOPE: ${{ inputs.scope }}
           EVENT_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
@@ -98,13 +108,23 @@ jobs:
                 exit 1
               fi
               target="$INPUT_COMMIT_SHA"
+              scope="${INPUT_SCOPE:-changed}"
+              if [[ "$scope" != "changed" && "$scope" != "all" ]]; then
+                echo "scope must be changed or all" >&2
+                exit 1
+              fi
               if [[ ! "$target" =~ ^[0-9a-fA-F]{40}$ ]]; then
                 echo "commit_sha must be a full 40-character SHA" >&2
                 exit 1
               fi
+              target="$(git rev-parse "$target^{commit}")"
               git fetch origin main
               if ! git merge-base --is-ancestor "$target" origin/main; then
                 echo "commit_sha must be present in main history" >&2
+                exit 1
+              fi
+              if [[ "$target" != "$(git rev-parse origin/main)" ]]; then
+                echo "workflow_dispatch requires commit_sha to equal the current origin/main HEAD" >&2
                 exit 1
               fi
               base="$(git rev-parse "$target^")"
@@ -114,8 +134,8 @@ jobs:
               exit 1
               ;;
           esac
-          printf 'base_sha=%s\n' "$base" >> "$GITHUB_OUTPUT"
-          printf 'target_sha=%s\n' "$target" >> "$GITHUB_OUTPUT"
+          printf 'base_sha=%s\ntarget_sha=%s\nscope=%s\n' \
+            "$base" "$target" "${scope:-changed}" >> "$GITHUB_OUTPUT"
       - name: Validate the exact target repository contracts
         env:
           BASE_SHA: ${{ steps.refs.outputs.base_sha }}
@@ -134,14 +154,22 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_MARKET: ${{ inputs.market }}
           INPUT_SKILL_NAME: ${{ inputs.skill_name }}
+          INPUT_SCOPE: ${{ inputs.scope }}
         run: |
           set -euo pipefail
           selected_name="$INPUT_SKILL_NAME"
+          scope="changed"
           if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then
             selected_name=""
+          else
+            scope="${INPUT_SCOPE:-changed}"
+          fi
+          matrix_base="$BASE_SHA"
+          if [[ "$scope" == "all" ]]; then
+            matrix_base="0000000000000000000000000000000000000000"
           fi
           python3 scripts/skill-release-matrix.py \
-            --base "$BASE_SHA" \
+            --base "$matrix_base" \
             --target "$TARGET_SHA" \
             --skill-name "$selected_name" \
             > "$RUNNER_TEMP/full-changed-skills.json"
@@ -155,6 +183,8 @@ jobs:
           include = result["matrix"]["include"]
           matrix = json.dumps(result["matrix"], separators=(",", ":"))
           market = os.environ.get("INPUT_MARKET", "") if os.environ.get("EVENT_NAME") == "workflow_dispatch" else "both"
+          scope = os.environ.get("INPUT_SCOPE", "") if os.environ.get("EVENT_NAME") == "workflow_dispatch" else "changed"
+          scope = scope or "changed"
           if market not in {"both", "skillhub", "clawhub"}:
               raise SystemExit("market must be both, skillhub, or clawhub")
           with open(sys.argv[3], "a", encoding="utf-8") as output:
@@ -162,6 +192,7 @@ jobs:
               output.write(f"has_changes={'true' if include else 'false'}\n")
               output.write(f"count={len(include)}\n")
               output.write(f"market={market}\n")
+              output.write(f"scope={scope}\n")
           Path(sys.argv[2]).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           PY
           cat "$RUNNER_TEMP/changed-skills.json" >> "$GITHUB_STEP_SUMMARY"
@@ -277,7 +308,7 @@ jobs:
           fi
           clawhub --cli-version
           clawhub skill publish "$BUNDLE_DIR" \
-            --slug "mc0571-$SKILL_NAME" \
+            --slug "$SKILL_NAME" \
             --name "$BUNDLE_NAME" \
             --version "$SKILL_VERSION" \
             "${owner_args[@]}" \
@@ -318,18 +349,21 @@ jobs:
           mkdir -p "$RUNNER_TEMP/skillhub-cli"
           tar -xzf "$archive" -C "$RUNNER_TEMP/skillhub-cli"
           test -f "$RUNNER_TEMP/skillhub-cli/cli/skills_store_cli.py"
-      - name: Publish changed Skills to SkillHub
+      - name: Publish Skills to SkillHub
         env:
           SKILLHUB_KEY: ${{ secrets.SKILLHUB_KEY }}
           EXPECTED_PUBLISHER: ${{ vars.SKILLHUB_PUBLISHER }}
+          EXPECTED_NAMESPACE: ${{ vars.SKILLHUB_NAMESPACE }}
           TARGET_SHA: ${{ needs.detect.outputs.target_sha }}
           RELEASE_MATRIX: ${{ needs.detect.outputs.matrix }}
           EVENT_NAME: ${{ github.event_name }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_SCOPE: ${{ needs.detect.outputs.scope }}
         run: |
           set -euo pipefail
           test -n "$SKILLHUB_KEY"
           test -n "$EXPECTED_PUBLISHER"
+          test -n "$EXPECTED_NAMESPACE"
           cli="$RUNNER_TEMP/skillhub-cli/cli/skills_store_cli.py"
           python3 "$cli" login --key "$SKILLHUB_KEY" --host "$SKILLHUB_HOST"
           python3 "$cli" auth whoami --json > "$RUNNER_TEMP/skillhub-whoami.json"
@@ -347,14 +381,18 @@ jobs:
               raise SystemExit("SkillHub token handle does not match vars.SKILLHUB_PUBLISHER")
           PY
           mkdir -p "$RUNNER_TEMP/tencent-results"
+          publish_skillhub_bundle() {
+            local bundle_path="$1"
+            local result_path="$2"
+            python3 "$cli" publish "$bundle_path" \
+              --host "$SKILLHUB_HOST" \
+              --changelog "自动发布 ${TARGET_SHA:0:12}" \
+              --json > "$result_path" || return $?
+          }
           while IFS= read -r item; do
             name="$(jq -r '.name' <<< "$item")"
             path="$(jq -r '.path' <<< "$item")"
             version="$(jq -r '.version' <<< "$item")"
-            bundle="$RUNNER_TEMP/bundle/$name"
-            bundle_json="$(python3 scripts/skill-release-bundle.py \
-              --ref "$TARGET_SHA" --path "$path" --market skillhub --destination "$bundle")"
-            slug="$(jq -r '.slug' <<< "$bundle_json")"
             main_state="$(python3 scripts/skill-release-bundle.py \
               --ref origin/main --path "$path" --version "$version" --check-current-skill)"
             if [[ "$(jq -r '.status' <<< "$main_state")" == "superseded" ]]; then
@@ -363,61 +401,97 @@ jobs:
                 "$name" "$version" "$main_version" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
-            public_state="$RUNNER_TEMP/skillhub-public-$name.json"
-            rm -f "$public_state"
-            python3 - "$slug" "$public_state" "$GITHUB_STEP_SUMMARY" <<'PY'
-          import os
-          import subprocess
-          import sys
-          import urllib.error
-          import urllib.request
-          from pathlib import Path
-
-          slug = sys.argv[1]
-          url = f"{os.environ['SKILLHUB_HOST'].rstrip('/')}/api/v1/skills/{slug}"
-          try:
-              with urllib.request.urlopen(url, timeout=20) as response:
-                  body = response.read()
-          except urllib.error.HTTPError as error:
-              if error.code == 404:
-                  decision = subprocess.run(
-                      [
-                          sys.executable,
-                          "scripts/skill-release-bundle.py",
-                          "--check-skillhub-404",
-                          "--event-name",
-                          os.environ.get("EVENT_NAME", ""),
-                          "--run-attempt",
-                          os.environ.get("RUN_ATTEMPT", ""),
-                      ],
-                      stdout=subprocess.PIPE,
-                      stderr=subprocess.PIPE,
-                      text=True,
-                  )
-                  if decision.returncode:
-                      raise SystemExit("SkillHub public status is not verifiable on dispatch or rerun; check the account page for a pending or submitted version before retrying")
-                  with open(sys.argv[3], "a", encoding="utf-8") as summary:
-                      summary.write(f"- SkillHub public status for `{slug}` was not verified on the initial push (404 is not proof of absence); the authorized publish API will decide whether creation or update is allowed.\n")
-                  raise SystemExit(0)
-              raise SystemExit(f"SkillHub public version check failed with HTTP {error.code}")
-          except (urllib.error.URLError, TimeoutError) as error:
-              raise SystemExit(f"SkillHub public version check failed: {type(error).__name__}")
-          Path(sys.argv[2]).write_bytes(body)
-          PY
-            if [[ -f "$public_state" ]]; then
-              python3 scripts/skill-release-bundle.py \
-                --validate-skillhub-public "$public_state" \
-                --publisher "$EXPECTED_PUBLISHER" \
-                --version "$version"
+            target_state="$(python3 scripts/skill-release-bundle.py \
+              --resolve-skillhub-target --ref "$TARGET_SHA" --path "$path" \
+              --host "$SKILLHUB_HOST" --namespace "$EXPECTED_NAMESPACE" \
+              --publisher "$EXPECTED_PUBLISHER" --version "$version")"
+            slug="$(jq -r '.slug' <<< "$target_state")"
+            slug_mode="name"
+            if [[ "$slug" == "$name-mc" ]]; then
+              slug_mode="name-mc"
+            elif [[ "$slug" != "$name" ]]; then
+              echo "SkillHub resolve returned an unsupported target slug" >&2
+              exit 1
+            fi
+            fallback_eligible="$(jq -r '.fallbackEligible' <<< "$target_state")"
+            public_version_status="$(jq -r '.status' <<< "$target_state")"
+            if [[ "$public_version_status" == "skip" ]]; then
+              printf -- '- SkillHub %s %s already exists as %s under the configured owner and namespace; equal version was skipped.\n' \
+                "$name" "$version" "$slug" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            if [[ "$public_version_status" == "unverified" ]]; then
+              if ! python3 scripts/skill-release-bundle.py \
+                --check-skillhub-404 --event-name "$EVENT_NAME" \
+                --scope "$RELEASE_SCOPE" --run-attempt "$RUN_ATTEMPT" >/dev/null; then
+                echo "SkillHub public 404 may proceed only on the original push or a first-attempt all-scope snapshot; check the account page for pending submissions before starting that snapshot" >&2
+                exit 1
+              fi
+              printf -- '- SkillHub public status for %s was not verified; the authorized publish API will decide whether creation or update is allowed.\n' \
+                "$slug" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            bundle="$RUNNER_TEMP/bundle/$name-$slug_mode"
+            bundle_json="$(python3 scripts/skill-release-bundle.py \
+              --ref "$TARGET_SHA" --path "$path" --market skillhub \
+              --skillhub-slug "$slug_mode" --destination "$bundle")"
+            if [[ "$(jq -r '.slug' <<< "$bundle_json")" != "$slug" ]]; then
+              echo "Staged SkillHub bundle slug did not match the resolved target" >&2
+              exit 1
             fi
             raw_result="$RUNNER_TEMP/skillhub-publish-$name.json"
-            set +e
-            python3 "$cli" publish "$bundle" \
-              --host "$SKILLHUB_HOST" \
-              --changelog "自动发布 ${TARGET_SHA:0:12}" \
-              --json > "$raw_result"
-            publish_exit=$?
-            set -e
+            if publish_skillhub_bundle "$bundle" "$raw_result"; then
+              publish_exit=0
+            else
+              publish_exit=$?
+            fi
+            if [[ "$publish_exit" -ne 0 && "$slug" == "$name" && "$fallback_eligible" == "true" ]]; then
+              conflict_state="$(python3 scripts/skill-release-bundle.py \
+                --classify-skillhub-conflict "$raw_result" \
+                --publish-exit-code "$publish_exit")"
+              if [[ "$(jq -r '.slugConflict' <<< "$conflict_state")" == "true" ]]; then
+                fallback_state="$(python3 scripts/skill-release-bundle.py \
+                  --resolve-skillhub-target --skillhub-slug name-mc \
+                  --ref "$TARGET_SHA" --path "$path" \
+                  --host "$SKILLHUB_HOST" --namespace "$EXPECTED_NAMESPACE" \
+                  --publisher "$EXPECTED_PUBLISHER" --version "$version")"
+                fallback_slug="$(jq -r '.slug' <<< "$fallback_state")"
+                fallback_status="$(jq -r '.status' <<< "$fallback_state")"
+                if [[ "$fallback_slug" != "$name-mc" ]]; then
+                  echo "SkillHub suffix resolve returned an unsupported target slug" >&2
+                  exit 1
+                fi
+                if [[ "$fallback_status" == "skip" ]]; then
+                  printf -- '- SkillHub %s %s was already published as %s; equal version was skipped after the bare slug was rejected.\n' \
+                    "$name" "$version" "$fallback_slug" >> "$GITHUB_STEP_SUMMARY"
+                  continue
+                fi
+                if [[ "$fallback_status" == "unverified" ]]; then
+                  python3 scripts/skill-release-bundle.py \
+                    --check-skillhub-404 --event-name "$EVENT_NAME" \
+                    --scope "$RELEASE_SCOPE" --run-attempt "$RUN_ATTEMPT" >/dev/null
+                  printf -- '- SkillHub public status for fallback slug %s was not verified; the authorized publish API will decide whether creation or update is allowed.\n' \
+                    "$fallback_slug" >> "$GITHUB_STEP_SUMMARY"
+                elif [[ "$fallback_status" != "publish" ]]; then
+                  echo "SkillHub suffix resolve returned an unsupported release status" >&2
+                  exit 1
+                fi
+                fallback_bundle="$RUNNER_TEMP/bundle/$name-name-mc"
+                fallback_bundle_json="$(python3 scripts/skill-release-bundle.py \
+                  --ref "$TARGET_SHA" --path "$path" --market skillhub \
+                  --skillhub-slug name-mc --destination "$fallback_bundle")"
+                if [[ "$(jq -r '.slug' <<< "$fallback_bundle_json")" != "$fallback_slug" ]]; then
+                  echo "Staged SkillHub fallback bundle slug did not match the resolved target" >&2
+                  exit 1
+                fi
+                slug="$fallback_slug"
+                raw_result="$RUNNER_TEMP/skillhub-publish-$name-fallback.json"
+                if publish_skillhub_bundle "$fallback_bundle" "$raw_result"; then
+                  publish_exit=0
+                else
+                  publish_exit=$?
+                fi
+              fi
+            fi
             if [[ "$publish_exit" -ne 0 ]]; then
               # BEGIN SKILLHUB_PUBLISH_FAILURE_DIAGNOSTIC
               python3 - "$raw_result" <<'PY' >&2 || printf 'SkillHub publish failed; safe error details could not be projected.\n' >&2
@@ -491,7 +565,7 @@ jobs:
           node-version: "22"
       - name: Install pinned ClawHub CLI
         run: npm install --global "clawhub@$CLAWHUB_VERSION"
-      - name: Publish changed Skills to ClawHub
+      - name: Publish Skills to ClawHub
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
           TARGET_SHA: ${{ needs.detect.outputs.target_sha }}
@@ -515,11 +589,10 @@ jobs:
             bundle="$RUNNER_TEMP/bundle/$name"
             bundle_json="$(python3 scripts/skill-release-bundle.py \
               --ref "$TARGET_SHA" --path "$path" --market clawhub --destination "$bundle")"
-            slug="mc0571-$name"
             display_name="$(jq -r '.displayName' <<< "$bundle_json")"
             target_json="$(python3 skills/skill-release/assets/github-actions/clawhub_target.py \
               --path "$path" --publisher "$EXPECTED_PUBLISHER" --owner "$TARGET_OWNER" \
-              --auto-prefix mc0571-)"
+              --auto-prefix "")"
             slug="$(jq -r '.slug' <<< "$target_json")"
             scoped_target="@$EXPECTED_PUBLISHER/$slug"
             inspect_status=0
@@ -528,7 +601,7 @@ jobs:
               2> "$RUNNER_TEMP/clawhub-inspect.err" || inspect_status=$?
             inspection="$(python3 skills/skill-release/assets/github-actions/clawhub_target.py \
               --path "$path" --publisher "$EXPECTED_PUBLISHER" --owner "$TARGET_OWNER" \
-              --auto-prefix mc0571- \
+              --auto-prefix "" \
               --inspect-json "$RUNNER_TEMP/clawhub-inspect.json" \
               --inspect-error "$RUNNER_TEMP/clawhub-inspect.err" \
               --inspect-status "$inspect_status" --allow-atomic-create)"
@@ -536,7 +609,7 @@ jobs:
             if [[ "$mode" == "unverified" ]]; then
               echo "ClawHub target status for @$EXPECTED_PUBLISHER/$slug was not verified; the publisher-scoped publish API will enforce ownership atomically." >> "$GITHUB_STEP_SUMMARY"
             else
-              python3 - "$RUNNER_TEMP/clawhub-inspect.json" "$version" <<'PY'
+              version_status="$(python3 - "$RUNNER_TEMP/clawhub-inspect.json" "$version" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -549,9 +622,20 @@ jobs:
           if latest:
               if not isinstance(latest, str) or not SEMVER_PATTERN.fullmatch(latest):
                   raise SystemExit("ClawHub returned an invalid latestVersion")
-              if semver_key(sys.argv[2]) <= semver_key(latest):
-                  raise SystemExit(f"local version {sys.argv[2]} is not above ClawHub latest {latest}")
+              local_key, latest_key = semver_key(sys.argv[2]), semver_key(latest)
+              if local_key < latest_key:
+                  raise SystemExit(f"local version {sys.argv[2]} is below ClawHub latest {latest}")
+              if local_key == latest_key:
+                  print("skip")
+                  raise SystemExit(0)
+          print("publish")
           PY
+              )"
+              if [[ "$version_status" == "skip" ]]; then
+                printf -- '- ClawHub %s %s already exists under the configured publisher; equal version was skipped.\n' \
+                  "$name" "$version" >> "$GITHUB_STEP_SUMMARY"
+                continue
+              fi
             fi
             owner_args=()
             if [[ -n "$TARGET_OWNER" ]]; then
@@ -589,7 +673,8 @@ jobs:
     steps:
       - name: Summarize publication result
         env:
-          CHANGED: ${{ needs.detect.outputs.count || '0' }}
+          TARGETS: ${{ needs.detect.outputs.count || '0' }}
+          SCOPE: ${{ needs.detect.outputs.scope || 'changed' }}
           TENCENT_DRY_RUN: ${{ needs.tencent_dry_run.result }}
           CLAWHUB_DRY_RUN: ${{ needs.clawhub_dry_run.result }}
           TENCENT_PUBLISH: ${{ needs.tencent_publish.result }}
@@ -598,7 +683,8 @@ jobs:
           {
             echo "## Skill release"
             echo
-            echo "- Changed Skills: $CHANGED"
+            echo "- Scope: $SCOPE"
+            echo "- Release targets: $TARGETS"
             echo "- SkillHub dry-run: $TENCENT_DRY_RUN"
             echo "- ClawHub dry-run: $CLAWHUB_DRY_RUN"
             echo "- SkillHub publish: $TENCENT_PUBLISH"
