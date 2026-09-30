@@ -54,7 +54,7 @@ def resolve_target(
     path: str,
     publisher: str,
     owner: str,
-    auto_prefix: str = "",
+    auto_prefix: str | None = None,
 ) -> Target:
     try:
         targets = json.loads(raw_targets)
@@ -71,14 +71,14 @@ def resolve_target(
     if not isinstance(targets, dict):
         raise TargetError("CLAWHUB_TARGETS_JSON must be a JSON object")
     entry = targets.get(path)
-    if entry is None and auto_prefix:
+    if entry is None and auto_prefix is not None:
         skill_path = PurePosixPath(path)
         if (
             skill_path.is_absolute()
             or len(skill_path.parts) != 2
             or skill_path.parts[0] != "skills"
             or not SKILL_NAME_PATTERN.fullmatch(skill_path.name)
-            or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*-", auto_prefix)
+            or (auto_prefix and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*-", auto_prefix))
         ):
             raise TargetError(f"invalid automatic ClawHub path or slug prefix: {path!r}")
         slug = f"{auto_prefix}{skill_path.name}"
@@ -230,6 +230,8 @@ def run_self_test() -> None:
     assert resolve_target(raw, "skills/my-skill", "my-owner", "my-owner") == target
     automatic = resolve_target("{}", "skills/my-skill", "my-owner", "", "mc0571-")
     assert automatic == Target("mc0571-my-skill", "auto")
+    bare_name = resolve_target("{}", "skills/my-skill", "my-owner", "", "")
+    assert bare_name == Target("my-skill", "auto")
     long_skill_name = "a" + "b" * 63
     long_slug = resolve_target(
         "{}", f"skills/{long_skill_name}", "my-owner", "", "mc0571-"
@@ -340,7 +342,7 @@ def main() -> int:
     parser.add_argument("--path")
     parser.add_argument("--publisher")
     parser.add_argument("--owner", default="")
-    parser.add_argument("--auto-prefix", default="")
+    parser.add_argument("--auto-prefix")
     parser.add_argument("--allow-atomic-create", action="store_true")
     parser.add_argument("--verify-identity", action="store_true")
     parser.add_argument("--github-output", type=Path)

@@ -15,7 +15,7 @@ def select_skill(result: dict, skill_name: str) -> dict:
     """Filter a release result only after checking the name against its full matrix."""
     include = result["matrix"]["include"]
     if skill_name and not any(item["name"] == skill_name for item in include):
-        raise ValueError(f"skill_name is not in the changed Skill matrix: {skill_name!r}")
+        raise ValueError(f"skill_name is not in the release Skill matrix: {skill_name!r}")
     selected = [item for item in include if not skill_name or item["name"] == skill_name]
     return {**result, "matrix": {**result["matrix"], "include": selected}}
 
@@ -36,7 +36,7 @@ def run_self_test() -> None:
     try:
         select_skill(full, "missing")
     except ValueError as exc:
-        assert "not in the changed Skill matrix" in str(exc)
+        assert "not in the release Skill matrix" in str(exc)
     else:
         raise AssertionError("an unchanged Skill was accepted for retry")
 

@@ -51,11 +51,13 @@ def superseding_main_version(repository: Path, ref: str, skill_path: str, target
     return main_version if semver_key(main_version) > semver_key(target_version) else None
 
 
-def can_create_after_skillhub_404(event_name: str, run_attempt: str) -> bool:
-    return event_name == "push" and run_attempt == "1"
+def can_create_after_skillhub_404(event_name: str, run_attempt: str, scope: str = "changed") -> bool:
+    return run_attempt == "1" and (
+        event_name == "push" or (event_name == "workflow_dispatch" and scope == "all")
+    )
 
 
-def validate_skillhub_public_state(payload: object, publisher: str, local_version: str) -> None:
+def validate_skillhub_public_state(payload: object, publisher: str, local_version: str) -> str:
     if not isinstance(payload, dict):
         raise BundleError("SkillHub returned no public Skill object")
     owner = payload.get("owner")
@@ -66,8 +68,12 @@ def validate_skillhub_public_state(payload: object, publisher: str, local_versio
     latest_version = latest.get("version") if isinstance(latest, dict) else None
     if not isinstance(latest_version, str) or not SEMVER_PATTERN.fullmatch(latest_version):
         raise BundleError("SkillHub returned an invalid latestVersion.version")
-    if not SEMVER_PATTERN.fullmatch(local_version) or semver_key(local_version) <= semver_key(latest_version):
-        raise BundleError(f"local version {local_version} is not above SkillHub latest {latest_version}")
+    if not SEMVER_PATTERN.fullmatch(local_version):
+        raise BundleError(f"local version is not valid SemVer: {local_version!r}")
+    local_key, latest_key = semver_key(local_version), semver_key(latest_version)
+    if local_key < latest_key:
+        raise BundleError(f"local version {local_version} is below SkillHub latest {latest_version}")
+    return "skip" if local_key == latest_key else "publish"
 
 
 def display_name(text: str, source: str) -> str:
@@ -186,11 +192,12 @@ def stage_skill(repository: Path, ref: str, skill_path: str, destination: Path, 
         if entry.mode == "100755":
             target.chmod(0o755)
     source_text = skill_file.read_text(encoding="utf-8") if skill_file else ""
+    slug = f"mc0571-{skill['name']}" if market == "skillhub" else skill["name"]
     return {
         "name": skill["name"],
         "path": skill_path,
         "version": skill["version"],
-        "slug": f"mc0571-{skill['name']}",
+        "slug": slug,
         "displayName": display_name(source_text, f"{skill_path}/SKILL.md"),
         "directory": str(destination),
         "files": len(files),
@@ -208,6 +215,7 @@ def main() -> int:
     parser.add_argument("--check-current-skill", action="store_true")
     parser.add_argument("--check-skillhub-404", action="store_true")
     parser.add_argument("--event-name")
+    parser.add_argument("--scope", choices=("changed", "all"), default="changed")
     parser.add_argument("--run-attempt")
     parser.add_argument("--publisher")
     parser.add_argument("--version")
@@ -221,8 +229,8 @@ def main() -> int:
             if not args.publisher or not args.version:
                 parser.error("--publisher and --version are required with --validate-skillhub-public")
             payload = json.loads(args.validate_skillhub_public.read_text(encoding="utf-8"))
-            validate_skillhub_public_state(payload, args.publisher, args.version)
-            print(json.dumps({"status": "verified"}))
+            status = validate_skillhub_public_state(payload, args.publisher, args.version)
+            print(json.dumps({"status": status}))
             return 0
         if args.check_current_skill:
             if not args.ref or not args.path or not args.version:
@@ -233,8 +241,8 @@ def main() -> int:
         if args.check_skillhub_404:
             if not args.event_name or not args.run_attempt:
                 parser.error("--event-name and --run-attempt are required with --check-skillhub-404")
-            if not can_create_after_skillhub_404(args.event_name, args.run_attempt):
-                raise BundleError("SkillHub public 404 may proceed only on the initial push run")
+            if not can_create_after_skillhub_404(args.event_name, args.run_attempt, args.scope):
+                raise BundleError("SkillHub public 404 may proceed only on the initial push or first-attempt all-scope run")
             print(json.dumps({"status": "unverified"}))
             return 0
         if not all((args.ref, args.path, args.market, args.destination)):
@@ -325,7 +333,7 @@ def run_self_test() -> None:
     publish_step = next(
         step
         for step in workflow["jobs"]["tencent_publish"]["steps"]
-        if step.get("name") == "Publish changed Skills to SkillHub"
+        if step.get("name") == "Publish Skills to SkillHub"
     )
     publish_script = publish_step["run"]
     shell_check = subprocess.run(
@@ -483,7 +491,8 @@ def run_self_test() -> None:
         assert not (tencent / ".DS_Store").exists() and not (tencent / "cache.pyc").exists()
         assert not (tencent / "__pycache__").exists()
         clawhub = Path(temporary) / "clawhub"
-        stage_skill(repository, clean, "skills/sample", clawhub, "clawhub")
+        claw_bundle = stage_skill(repository, clean, "skills/sample", clawhub, "clawhub")
+        assert claw_bundle["slug"] == "sample"
         claw_text = (clawhub / "SKILL.md").read_text(encoding="utf-8")
         assert "slug:" not in claw_text and "displayName:" not in claw_text
         assert "metadata:\n  version: 1.2.3" in claw_text
@@ -498,13 +507,21 @@ def run_self_test() -> None:
         "owner": {"handle": "publisher"},
         "latestVersion": {"version": "1.2.2"},
     }
-    validate_skillhub_public_state(public_state, "publisher", "1.2.3")
+    assert validate_skillhub_public_state(public_state, "publisher", "1.2.3") == "publish"
+    assert validate_skillhub_public_state(
+        {"owner": {"handle": "publisher"}, "latestVersion": {"version": "1.2.3"}},
+        "publisher",
+        "1.2.3",
+    ) == "skip"
     assert can_create_after_skillhub_404("push", "1")
     assert not can_create_after_skillhub_404("push", "2")
     assert not can_create_after_skillhub_404("workflow_dispatch", "1")
+    assert can_create_after_skillhub_404("workflow_dispatch", "1", "all")
+    assert not can_create_after_skillhub_404("workflow_dispatch", "2", "all")
+    assert not can_create_after_skillhub_404("workflow_dispatch", "1", "changed")
     for invalid_state, owner, version in (
         (public_state, "another-publisher", "1.2.3"),
-        (public_state, "publisher", "1.2.2"),
+        (public_state, "publisher", "1.2.1"),
         ({"owner": {"handle": "publisher"}, "latestVersion": {}}, "publisher", "1.2.3"),
     ):
         try:
