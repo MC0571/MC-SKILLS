@@ -254,6 +254,7 @@ def main() -> int:
 def run_self_test() -> None:
     from tempfile import TemporaryDirectory
     import subprocess
+    import yaml
 
     result_filter = (
         Path(__file__).resolve().parents[1]
@@ -317,6 +318,103 @@ def run_self_test() -> None:
     malformed_result = project_skillhub_result("not json")
     assert malformed_result.returncode != 0 and "parse error" in malformed_result.stderr
     assert "not json" not in malformed_result.stderr and "not json" not in malformed_result.stdout
+
+    workflow_path = Path(__file__).resolve().parents[1] / ".github/workflows/skill-release.yml"
+    workflow_text = workflow_path.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(workflow_text)
+    publish_step = next(
+        step
+        for step in workflow["jobs"]["tencent_publish"]["steps"]
+        if step.get("name") == "Publish changed Skills to SkillHub"
+    )
+    publish_script = publish_step["run"]
+    shell_check = subprocess.run(
+        ["bash", "-n"], input=publish_script, check=False, capture_output=True, text=True
+    )
+    assert shell_check.returncode == 0, shell_check.stderr
+
+    diagnostic_section = publish_script.split("# BEGIN SKILLHUB_PUBLISH_FAILURE_DIAGNOSTIC", 1)[1]
+    diagnostic_section = diagnostic_section.split("# END SKILLHUB_PUBLISH_FAILURE_DIAGNOSTIC", 1)[0]
+    diagnostic_body = diagnostic_section.split("<<'PY'", 1)[1].split("\n", 1)[1]
+    diagnostic_program = diagnostic_body.split("\nPY\n", 1)[0]
+    assert diagnostic_program.startswith("import json\n"), repr(diagnostic_program[:40])
+
+    api_key = "test-skillhub-key"
+
+    def run_publish_diagnostic(raw: str) -> subprocess.CompletedProcess[str]:
+        with TemporaryDirectory() as temporary:
+            raw_path = Path(temporary) / "publish-result.json"
+            raw_path.write_text(raw, encoding="utf-8")
+            environment = os.environ.copy()
+            environment["SKILLHUB_KEY"] = api_key
+            return subprocess.run(
+                [sys.executable, "-c", diagnostic_program, str(raw_path)],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+
+    failed_response = json.dumps(
+        {
+            "status": 403,
+            "body": {
+                "code": "permission_denied",
+                "error": f"request rejected for {api_key}\ncheck publisher",
+                "token": api_key,
+            },
+            "unknown": {"secret": api_key},
+        }
+    )
+    failure_process = run_publish_diagnostic(failed_response)
+    assert failure_process.returncode == 0, failure_process.stderr
+    assert "\n" not in failure_process.stdout.rstrip("\n"), failure_process.stdout
+    failure = json.loads(failure_process.stdout.removeprefix("SkillHub publish failed: "))
+    assert failure == {
+        "message": "SkillHub publish failed",
+        "httpStatus": 403,
+        "code": "permission_denied",
+        "error": "request rejected for [REDACTED]\ncheck publisher",
+    }, failure
+    assert api_key not in failure_process.stdout and "unknown" not in failure_process.stdout
+
+    numeric_code_process = run_publish_diagnostic(json.dumps({"status": 409, "body": {"code": 409}}))
+    numeric_code = json.loads(numeric_code_process.stdout.removeprefix("SkillHub publish failed: "))
+    assert numeric_code["httpStatus"] == 409 and numeric_code["code"] == "409", numeric_code
+
+    malformed_process = run_publish_diagnostic(f"CLI error: {api_key}")
+    assert malformed_process.returncode == 0
+    assert "not valid JSON" in malformed_process.stdout
+    assert api_key not in malformed_process.stdout and "CLI error" not in malformed_process.stdout
+
+    unsafe_fields_process = run_publish_diagnostic(
+        json.dumps(
+            {
+                "status": True,
+                "body": {"code": [api_key], "error": {"message": api_key}},
+                "token": api_key,
+            }
+        )
+    )
+    unsafe_fields = json.loads(unsafe_fields_process.stdout.removeprefix("SkillHub publish failed: "))
+    assert unsafe_fields == {
+        "message": "SkillHub publish failed; CLI returned no safe structured error details"
+    }, unsafe_fields
+    assert api_key not in unsafe_fields_process.stdout
+
+    bounded_process = run_publish_diagnostic(
+        json.dumps(
+            {
+                "status": "502",
+                "body": {"code": "c" * 200, "error": "x" * 395 + api_key + "e" * 800},
+            }
+        )
+    )
+    bounded = json.loads(bounded_process.stdout.removeprefix("SkillHub publish failed: "))
+    assert len(bounded["code"]) == 80 and len(bounded["error"]) == 400, bounded
+    assert "httpStatus" not in bounded, bounded
+    assert bounded["error"] == "x" * 395 + "[REDA", bounded
+    assert api_key not in bounded_process.stdout
 
     def git(repository: Path, *args: str) -> str:
         return subprocess.run(
