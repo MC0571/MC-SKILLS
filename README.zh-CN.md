@@ -50,7 +50,7 @@ npx skills add https://github.com/MC-and-his-Agents/MC-AGENT-KIT/tree/main/skill
 | [codex-like-app-design](./skills/design/codex-like-app-design/SKILL.md) | design | 0.1.0 | Design, build, adapt, or review dense desktop AI workbenches using source-grounded patterns from Codex Desktop. |
 | [pmo](./skills/dev/pmo/SKILL.md) | dev | 0.12.0 | 在用户委任的单一 GitHub 仓库中，持续推进多个交付单元组成的总体产品目标，处理跨单元取舍、真实依赖、归属冲突和后继。 |
 | [tasks-owner](./skills/dev/tasks-owner/SKILL.md) | dev | 0.26.0 | 在用户明确委任或有效 PMO 委派下，持续负责一个可定位交付范围的实现、验证和收口。 |
-| [multi-agent-coordination](./skills/multi-agent-coordination/SKILL.md) | — | 0.1.0 | 在用户要求多 Agent 协作、委派或并行工作时，协调主 Agent 与 subagent 的职责、模型路由、交接、审查和集成；普通单 Agent 任务不因此启动委派。 |
+| [multi-agent](./skills/multi-agent/SKILL.md) | — | 0.2.0 | 在用户要求多 Agent 协作、委派或并行工作时，协调主 Agent 与 subagent 的职责、模型路由、交接、审查和集成；普通单 Agent 任务不因此启动委派。 |
 | [skill-release](./skills/skill-release/SKILL.md) | — | 0.4.0 | 检查、预检、发布并配置手动、Tag 或按变更自动发布 Skill 到腾讯 SkillHub 或 ClawHub。 |
 | [write-a-goal](./skills/write-a-goal/SKILL.md) | — | 0.2.0 | 起草、优化或设置符合 OpenAI《Follow a goal》指南的 Codex goal，并为 GitHub Issue 提供创建前草案、更新、修订、补全和校验。 |
 <!-- SKILLS_END -->
