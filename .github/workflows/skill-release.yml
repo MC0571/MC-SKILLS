@@ -411,10 +411,56 @@ jobs:
                 --version "$version"
             fi
             raw_result="$RUNNER_TEMP/skillhub-publish-$name.json"
+            set +e
             python3 "$cli" publish "$bundle" \
               --host "$SKILLHUB_HOST" \
               --changelog "自动发布 ${TARGET_SHA:0:12}" \
               --json > "$raw_result"
+            publish_exit=$?
+            set -e
+            if [[ "$publish_exit" -ne 0 ]]; then
+              # BEGIN SKILLHUB_PUBLISH_FAILURE_DIAGNOSTIC
+              python3 - "$raw_result" <<'PY' >&2 || printf 'SkillHub publish failed; safe error details could not be projected.\n' >&2
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          CODE_LIMIT = 80
+          ERROR_LIMIT = 400
+
+          try:
+              payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          except (OSError, UnicodeError, ValueError, RecursionError):
+              print("SkillHub publish failed; CLI response was unavailable or not valid JSON, details withheld.")
+              raise SystemExit(0)
+          if not isinstance(payload, dict):
+              print("SkillHub publish failed; CLI returned no JSON object, so response details were withheld.")
+              raise SystemExit(0)
+          body = payload.get("body")
+          body = body if isinstance(body, dict) else {}
+          api_key = os.environ.get("SKILLHUB_KEY", "")
+          report = {"message": "SkillHub publish failed"}
+          status = payload.get("status")
+          if type(status) is int and 100 <= status <= 599:
+              report["httpStatus"] = status
+          for name, value, limit, allow_int in (
+              ("code", body.get("code"), CODE_LIMIT, True),
+              ("error", body.get("error"), ERROR_LIMIT, False),
+          ):
+              if type(value) is not str and not (allow_int and type(value) is int):
+                  continue
+              value = str(value).replace(api_key, "[REDACTED]") if api_key else str(value)
+              value = value[:limit]
+              if value:
+                  report[name] = value
+          if len(report) == 1:
+              report["message"] = "SkillHub publish failed; CLI returned no safe structured error details"
+          print("SkillHub publish failed: " + json.dumps(report, separators=(",", ":")))
+          PY
+              # END SKILLHUB_PUBLISH_FAILURE_DIAGNOSTIC
+              exit "$publish_exit"
+            fi
             jq -e --arg name "$name" --arg slug "$slug" --arg version "$version" \
               -f skills/skill-release/assets/github-actions/skillhub_publish_result.jq \
               "$raw_result" > "$RUNNER_TEMP/tencent-results/$name.json"
