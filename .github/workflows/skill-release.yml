@@ -416,7 +416,7 @@ jobs:
             fallback_eligible="$(jq -r '.fallbackEligible' <<< "$target_state")"
             public_version_status="$(jq -r '.status' <<< "$target_state")"
             if [[ "$public_version_status" == "skip" ]]; then
-              printf -- '- SkillHub %s %s already exists as `%s` under the configured owner and namespace; equal version was skipped.\n' \
+              printf -- '- SkillHub %s %s already exists as %s under the configured owner and namespace; equal version was skipped.\n' \
                 "$name" "$version" "$slug" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
@@ -427,7 +427,7 @@ jobs:
                 echo "SkillHub public 404 may proceed only on the original push or a first-attempt all-scope snapshot; check the account page for pending submissions before starting that snapshot" >&2
                 exit 1
               fi
-              printf -- '- SkillHub public status for `%s` was not verified; the authorized publish API will decide whether creation or update is allowed.\n' \
+              printf -- '- SkillHub public status for %s was not verified; the authorized publish API will decide whether creation or update is allowed.\n' \
                 "$slug" >> "$GITHUB_STEP_SUMMARY"
             fi
             bundle="$RUNNER_TEMP/bundle/$name-$slug_mode"
@@ -461,7 +461,7 @@ jobs:
                   exit 1
                 fi
                 if [[ "$fallback_status" == "skip" ]]; then
-                  printf -- '- SkillHub %s %s was already published as `%s`; equal version was skipped after the bare slug was rejected.\n' \
+                  printf -- '- SkillHub %s %s was already published as %s; equal version was skipped after the bare slug was rejected.\n' \
                     "$name" "$version" "$fallback_slug" >> "$GITHUB_STEP_SUMMARY"
                   continue
                 fi
@@ -469,7 +469,7 @@ jobs:
                   python3 scripts/skill-release-bundle.py \
                     --check-skillhub-404 --event-name "$EVENT_NAME" \
                     --scope "$RELEASE_SCOPE" --run-attempt "$RUN_ATTEMPT" >/dev/null
-                  printf -- '- SkillHub public status for fallback slug `%s` was not verified; the authorized publish API will decide whether creation or update is allowed.\n' \
+                  printf -- '- SkillHub public status for fallback slug %s was not verified; the authorized publish API will decide whether creation or update is allowed.\n' \
                     "$fallback_slug" >> "$GITHUB_STEP_SUMMARY"
                 elif [[ "$fallback_status" != "publish" ]]; then
                   echo "SkillHub suffix resolve returned an unsupported release status" >&2
