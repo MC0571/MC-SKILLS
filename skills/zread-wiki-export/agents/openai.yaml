@@ -1,0 +1,4 @@
+interface:
+  display_name: "Zread Wiki 导出"
+  short_description: "通过浏览器遍历仓库的全部 Zread Wiki 章节，保存 Markdown 和目录索引"
+  default_prompt: "使用 $zread-wiki-export，将指定仓库的全部 Zread Wiki 章节保存为本地 Markdown，并报告完整性检查结果。"
