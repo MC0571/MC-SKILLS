@@ -2,7 +2,7 @@
 name: idea-to-spec
 description: 从一句产品想法或已有产品草案开始，通过产品探讨、方案推演与方向收敛，按需组织多 Agent，逐步形成 PRD、架构设计和功能 Spec，并审查一致性、处理需求变更。适用于尚无代码的产品探索及后续规格细化；单纯代码实现、文字润色或已有仓库的说明性 wiki 生成不触发。
 metadata:
-  version: 0.2.0
+  version: 0.2.1
   category: "Productivity"
 ---
 
