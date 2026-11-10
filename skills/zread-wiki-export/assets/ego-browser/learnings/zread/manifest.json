@@ -1,0 +1,39 @@
+{
+  "id": "zread",
+  "name": "Zread Wiki",
+  "domains": [
+    "zread.ai"
+  ],
+  "notes": [
+    "notes/overview.md"
+  ],
+  "nodeTools": {
+    "open_and_extract": {
+      "description": "只读打开公开 Zread 仓库或章节，读取目录、来源版本和正文候选；不提交索引生成或刷新。",
+      "path": "tools/open-and-extract.js",
+      "callable": "openAndExtract",
+      "args": {
+        "url": {
+          "type": "string",
+          "required": true,
+          "description": "https://zread.ai/<owner>/<repo>[/<slug>]；不接受查询、锚点或登录参数。"
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "ok、url、repository、title、chapter、sourceIndex、catalog、article；正文候选仍需完整性验收，页面不可用时返回 ok:false 与 reason。"
+      }
+    }
+  },
+  "browserTools": {
+    "extract_page": {
+      "description": "只读取当前 DOM 的 Wiki 目录、激活章、来源索引及原始 Markdown 候选；无匹配 Markdown 时显式返回文章 HTML，不导航、不展开目录。",
+      "path": "browser-tools/extract-page.js",
+      "args": {},
+      "returns": {
+        "type": "object",
+        "description": "ok、url、repository、title、chapter、sourceIndex、catalog 与 article。catalog.coverage 仅为 current_dom；article.sourceMarkdown 为含站点 frontmatter 的候选，articleHtml 是明确标注的 HTML，不能直接当最终 Markdown。"
+      }
+    }
+  }
+}

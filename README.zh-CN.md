@@ -22,7 +22,7 @@ Skill 发布到 [腾讯 SkillHub](https://skillhub.cn/) 和 [ClawHub](https://cl
 | [multi-agent](./skills/multi-agent/SKILL.md) | Productivity | 0.4.0 | 在用户要求多 Agent 协作、委派或并行工作时，协调负责目标的 Agent、执行 subagent 与 Reviewer 的职责、模型路由、交接、审查和集成；普通单 Agent 任务不因此启动委派。 |
 | [skill-release](./skills/skill-release/SKILL.md) | Developer Tools | 0.6.0 | 检查、预检、发布并配置手动、Tag 或按变更自动发布 Skill 到腾讯 SkillHub 或 ClawHub。 |
 | [write-a-goal](./skills/write-a-goal/SKILL.md) | Productivity | 0.2.2 | 起草、优化或设置符合 OpenAI《Follow a goal》指南的 Codex goal，并为 GitHub Issue 提供创建前草案、更新、修订、补全和校验。 |
-| [zread-wiki-export](./skills/zread-wiki-export/SKILL.md) | Developer Tools | 0.3.0 | 将 zread.ai 上指定 GitHub 仓库的既有 Wiki 保存为本地 Markdown、目录索引和 Git 历史。 |
+| [zread-wiki-export](./skills/zread-wiki-export/SKILL.md) | Developer Tools | 0.4.0 | 将 zread.ai 上指定 GitHub 仓库的既有 Wiki 保存为本地 Markdown、目录索引和 Git 历史。 |
 <!-- SKILLS_END -->
 
 ## Agent Plugins
