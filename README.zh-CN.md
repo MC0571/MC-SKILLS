@@ -18,7 +18,7 @@ Skill 发布到 [腾讯 SkillHub](https://skillhub.cn/) 和 [ClawHub](https://cl
 | Skill | 分类 | 版本 | 描述 |
 |---|---|---:|---|
 | [agents-md](./skills/agents-md/SKILL.md) | Developer Tools | 0.1.1 | 创建、审查、重构或更新 AGENTS.md、CLAUDE.md 等仓库指令。 |
-| [idea-to-spec](./skills/idea-to-spec/SKILL.md) | Productivity | 0.2.1 | 从一句产品想法或已有产品草案开始，通过产品探讨、方案推演与方向收敛，按需组织多 Agent，逐步形成 PRD、架构设计和功能 Spec，并审查一致性、处理需求变更。 |
+| [idea-to-spec](./skills/idea-to-spec/SKILL.md) | Productivity | 0.3.0 | 从产品想法、用户故事或已有草案开始，通过产品探讨、用户旅程推演与方向收敛，按需组织多 Agent，形成相互关联的故事、PRD、架构、状态与功能 Spec，审查体验和一致性；任务已要求编码时，按故事驱动实现、测试与变更同步。 |
 | [image-art-direction](./skills/image-art-direction/SKILL.md) | Creativity | 0.7.0 | 将人物、角色、产品、食物、建筑、室内、电影或纪实场景的静态图像需求转为连贯、可执行、可检视的视觉规格，并按需生成、编辑、评审或定向修订图像。 |
 | [multi-agent](./skills/multi-agent/SKILL.md) | Productivity | 0.4.0 | 在用户要求多 Agent 协作、委派或并行工作时，协调负责目标的 Agent、执行 subagent 与 Reviewer 的职责、模型路由、交接、审查和集成；普通单 Agent 任务不因此启动委派。 |
 | [skill-release](./skills/skill-release/SKILL.md) | Developer Tools | 0.6.0 | 检查、预检、发布并配置手动、Tag 或按变更自动发布 Skill 到腾讯 SkillHub 或 ClawHub。 |
