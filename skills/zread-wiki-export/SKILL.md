@@ -2,7 +2,7 @@
 name: zread-wiki-export
 description: 将 zread.ai 上指定 GitHub 仓库的既有 Wiki 保存为本地 Markdown、目录索引和 Git 历史。用于导出、完整保存、更新或续导 Zread 仓库文档；不以重新生成的 Wiki、其他 Wiki 平台或 README 替代原文。
 metadata:
-  version: 0.3.0
+  version: 0.4.0
   category: "Developer Tools"
 ---
 
@@ -50,7 +50,7 @@ metadata:
 
 ## 提取、更新与恢复
 
-逐章提取前读取 [提取方法与修复流程](references/extraction.md)。优先公开页面自身的原始 Markdown，其次是从实际文章 DOM 转换；保留代码、表格、源码引用、Mermaid 和可取得的图像。保持站点正文语言，只在用户要求时切换语言。
+逐章提取前读取 [提取方法与修复流程](references/extraction.md) 及随包的[站点知识](assets/ego-browser/learnings/zread/notes/overview.md)。后者维护已观察的选择器、数据结构与可选读取工具，不要求其他浏览器安装特定工具。优先公开页面自身的原始 Markdown，其次是从实际文章 DOM 转换；保留代码、表格、源码引用、Mermaid 和可取得的图像。保持站点正文语言，只在用户要求时切换语言。
 
 - 每次跳转等待目标标题与正文加载完，核对 URL/激活项后提取，防止把上一章重复保存。逐章验收并落盘，再更新同一索引；正文已保存但图表或结构缺失时仍为 `failed`。
 - 续导或更新先核对已有索引、文件和当前站点目录。来源标记相同，只能复用回读后仍与当前章节一致的 `saved` 文件；继续处理 `pending` 和 `failed`。缺文件或核对失败需记录原因并补齐，不能凭文件存在或工具退出成功验收。
