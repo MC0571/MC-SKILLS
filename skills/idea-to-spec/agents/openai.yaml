@@ -1,4 +1,4 @@
 interface:
   display_name: "从产品想法到规格"
-  short_description: "从产品想法按需组织多 Agent，产出需求、架构与功能规格并审查一致性"
-  default_prompt: "使用 $idea-to-spec，从我的产品想法开始，按需组织多 Agent，逐步产出 PRD、架构设计和功能 Spec，并完成一致性审查。"
+  short_description: "从产品想法展开方案探讨与推演，按需组织多 Agent，收敛后细化需求、架构与规格"
+  default_prompt: "使用 $idea-to-spec，从我的产品想法开始探讨方案、推演核心体验并收敛方向，再按需组织多 Agent，逐步细化 PRD、架构设计和功能 Spec，审查一致性。已有稳定基线时直接细化本轮范围。"
